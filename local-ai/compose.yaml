@@ -1,0 +1,154 @@
+name: local-ai
+
+services:
+  searxng:
+    image: searxng/searxng:2026.7.28-c01178d03
+    container_name: local-ai-searxng
+    restart: "no"
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      SEARXNG_BASE_URL: http://localhost:8080/
+      SEARXNG_BIND_ADDRESS: 0.0.0.0
+      SEARXNG_SECRET: ${SEARXNG_SECRET}
+    volumes:
+      - ./searxng:/etc/searxng:ro
+      - searxng-cache:/var/cache/searxng
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/search?q=health&format=json')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    mem_limit: 512m
+    cpus: 0.75
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  litellm-db:
+    image: postgres:16-alpine
+    container_name: local-ai-litellm-db
+    restart: "no"
+    environment:
+      POSTGRES_DB: litellm
+      POSTGRES_USER: litellm
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - litellm-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d litellm -U litellm"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    mem_limit: 256m
+    cpus: 0.5
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  litellm:
+    image: ghcr.io/berriai/litellm:v1.86.2
+    container_name: local-ai-gateway
+    restart: "no"
+    command: ["--config", "/app/config.yaml", "--port", "4000"]
+    ports:
+      - "127.0.0.1:4000:4000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      DATABASE_URL: postgresql://litellm:${POSTGRES_PASSWORD}@litellm-db:5432/litellm
+      LITELLM_MASTER_KEY: ${LITELLM_MASTER_KEY}
+      LITELLM_SALT_KEY: ${LITELLM_SALT_KEY}
+      UI_USERNAME: admin
+      UI_PASSWORD: ${LITELLM_UI_PASSWORD}
+      STORE_MODEL_IN_DB: "True"
+      DISABLE_ADMIN_UI: "False"
+      # Preserve large local prompts/responses instead of LiteLLM's short DB default.
+      MAX_STRING_LENGTH_PROMPT_IN_DB: "1000000"
+    volumes:
+      - ./litellm-config.yaml:/app/config.yaml:ro
+    depends_on:
+      litellm-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:4000/health/liveliness')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    mem_limit: 1280m
+    cpus: 1.5
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+  open-webui:
+    profiles: ["legacy-ui"]
+    image: ghcr.io/open-webui/open-webui:v0.10.0
+    container_name: local-ai-webui
+    restart: "no"
+    ports:
+      - "127.0.0.1:3001:8080"
+    environment:
+      ENABLE_OLLAMA_API: "false"
+      ENABLE_OPENAI_API: "true"
+      OPENAI_API_BASE_URL: http://litellm:4000/v1
+      OPENAI_API_BASE_URLS: http://litellm:4000/v1
+      OPENAI_API_KEY: ${LITELLM_MASTER_KEY}
+      OPENAI_API_KEYS: ${LITELLM_MASTER_KEY}
+      OPENAI_API_CONFIGS: '{"0":{"enable":true,"model_ids":["gpt-oss:20b"],"connection_type":"litellm"}}'
+      WEBUI_URL: http://localhost:3001
+      WEBUI_NAME: Local AI Control Center
+      WEBUI_SECRET_KEY: ${WEBUI_SECRET_KEY}
+      DEFAULT_MODELS: gpt-oss:20b
+      DEFAULT_PINNED_MODELS: gpt-oss:20b
+      ENABLE_API_KEYS: "true"
+
+      # Prevent surprise downloads after the Docker images have been installed.
+      OFFLINE_MODE: "true"
+      HF_HUB_OFFLINE: "1"
+      ENABLE_VERSION_UPDATE_CHECK: "false"
+      RAG_EMBEDDING_MODEL_AUTO_UPDATE: "false"
+      RAG_RERANKING_MODEL_AUTO_UPDATE: "false"
+      WHISPER_MODEL_AUTO_UPDATE: "false"
+
+      # Avoid extra background model calls and conserve laptop resources.
+      ENABLE_AUTOCOMPLETE_GENERATION: "false"
+      ENABLE_FOLLOW_UP_GENERATION: "false"
+      ENABLE_TAGS_GENERATION: "false"
+      ENABLE_TITLE_GENERATION: "false"
+      ENABLE_MEMORY_BACKGROUND_REVIEW: "false"
+      ENABLE_WEB_SEARCH: "false"
+      ENABLE_IMAGE_GENERATION: "false"
+
+      DATABASE_POOL_SIZE: "8"
+      DATABASE_SQLITE_PRAGMA_CACHE_SIZE: "-2000"
+      DATABASE_SQLITE_PRAGMA_MMAP_SIZE: "0"
+      CORS_ALLOW_ORIGIN: http://localhost:3001;http://127.0.0.1:3001
+    volumes:
+      - open-webui-data:/app/backend/data
+    depends_on:
+      litellm:
+        condition: service_healthy
+    mem_limit: 2560m
+    cpus: 2.0
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+volumes:
+  searxng-cache:
+    name: local-ai-searxng-cache
+  open-webui-data:
+    name: local-ai-open-webui-data
+  litellm-postgres-data:
+    name: local-ai-litellm-postgres-data
