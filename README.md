@@ -14,6 +14,11 @@ local-ai\Start Local AI.cmd
 local-ai\Open Local AI.cmd
 ```
 
+For a location-independent launcher that starts every dependency and verifies its status, run
+`./scripts/start-all.ps1`. Add `-Restart` to stop and freshly restart the complete stack. You can
+also double-click **Start All Services.cmd** in the repository root. Startup is idempotent and does
+not download models, container images, or dependencies.
+
 The browser provides workspace/session navigation, Markdown conversation, request timelines, the
 complete event audit, owner-bound approvals, summaries, tags, quotas, exports, archives, integrity
 checks, and plugin status. It follows the system theme by default and offers persistent light and

@@ -201,14 +201,23 @@ function Invoke-Compose([string[]]$Arguments) {
     }
 }
 
+function Test-DockerReady {
+    try {
+        & docker info --format "{{.ServerVersion}}" *> $null
+        return $LASTEXITCODE -eq 0
+    }
+    catch {
+        return $false
+    }
+}
+
 function Ensure-Docker {
-    & docker info --format "{{.ServerVersion}}" *> $null
-    if ($LASTEXITCODE -eq 0) {
+    if (Test-DockerReady) {
         return
     }
     Write-Host "Starting Docker Desktop..."
     & docker desktop start | Out-Host
-    Wait-Until { (& docker info --format "{{.ServerVersion}}" 2>$null) -ne $null } 180 "Docker Desktop"
+    Wait-Until { Test-DockerReady } 180 "Docker Desktop"
 }
 
 function Get-OllamaProcesses {
@@ -289,8 +298,7 @@ function Start-LocalAI {
 function Stop-LocalAI {
     Ensure-LocalSecrets
     Stop-HarnessGui
-    & docker info --format "{{.ServerVersion}}" *> $null
-    if ($LASTEXITCODE -eq 0) {
+    if (Test-DockerReady) {
         Invoke-Compose @("stop", "--timeout", "20")
     }
     # Stopping the Ollama server releases every loaded model. Avoid `ollama stop`
@@ -312,11 +320,7 @@ function Get-ContainerStatus([string]$Name) {
 
 function Show-Status {
     Write-Section "Local AI"
-    $dockerReady = $false
-    & docker info --format "{{.ServerVersion}}" *> $null
-    if ($LASTEXITCODE -eq 0) {
-        $dockerReady = $true
-    }
+    $dockerReady = Test-DockerReady
     Write-Host ("Docker engine : " + $(if ($dockerReady) { "running" } else { "stopped" }))
     if ($dockerReady) {
         Write-Host ("LiteLLM DB    : " + (Get-ContainerStatus "local-ai-litellm-db"))
