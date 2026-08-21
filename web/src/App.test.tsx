@@ -528,4 +528,47 @@ describe("Harness browser", () => {
       ),
     );
   });
+
+  it("filters navigation and persists both desktop panel states", async () => {
+    const { default: App } = await import("./App");
+    render(<App />);
+    await screen.findByText("What shall we build?");
+
+    fireEvent.change(screen.getByLabelText("Search workspaces"), {
+      target: { value: "missing" },
+    });
+    expect(
+      within(
+        screen.getByRole("navigation", { name: "Workspaces" }),
+      ).queryByText("Agent"),
+    ).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Search workspaces"), {
+      target: { value: "agent" },
+    });
+    expect(
+      within(screen.getByRole("navigation", { name: "Workspaces" })).getByText(
+        "Agent",
+      ),
+    ).toBeVisible();
+
+    fireEvent.change(screen.getByLabelText("Search sessions"), {
+      target: { value: "missing" },
+    });
+    expect(
+      within(screen.getByRole("navigation", { name: "Sessions" })).queryByText(
+        "New session",
+      ),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse navigation" }),
+    );
+    expect(localStorage.getItem("harness-left-panel")).toBe("collapsed");
+    fireEvent.click(screen.getByRole("button", { name: "Expand navigation" }));
+    expect(localStorage.getItem("harness-left-panel")).toBe("expanded");
+    fireEvent.click(screen.getByRole("button", { name: "Hide activity" }));
+    expect(localStorage.getItem("harness-right-panel")).toBe("collapsed");
+    fireEvent.click(screen.getByRole("button", { name: "Show activity" }));
+    expect(localStorage.getItem("harness-right-panel")).toBe("expanded");
+  });
 });

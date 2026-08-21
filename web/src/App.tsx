@@ -15,13 +15,12 @@ import { api, bootstrap, clientId } from "./api";
 import { normalizeMarkdownForDisplay, safeExternalHref } from "./markdown";
 import {
   codeLanguage,
-  initialTheme,
-  nextTheme,
   nodeText,
   statusIcon,
   upsertEvent,
 } from "./presentation";
 import { buildRequestTimeline, type TimelineStep } from "./timeline";
+import { AppHeader, EmptyState, StatusRegion } from "./ui";
 import type {
   Approval,
   EvaluationObservation,
@@ -37,7 +36,6 @@ import type {
 } from "./types";
 
 function App() {
-  const [theme, setTheme] = useState<"system" | "dark" | "light">(initialTheme);
   const [model, setModel] = useState("");
   const [models, setModels] = useState<string[]>([]);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
@@ -53,6 +51,14 @@ function App() {
   const [showWorkspace, setShowWorkspace] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showMobileActivity, setShowMobileActivity] = useState(false);
+  const [leftCollapsed, setLeftCollapsed] = useState(
+    () => localStorage.getItem("harness-left-panel") === "collapsed",
+  );
+  const [rightCollapsed, setRightCollapsed] = useState(
+    () => localStorage.getItem("harness-right-panel") === "collapsed",
+  );
+  const [workspaceFilter, setWorkspaceFilter] = useState("");
+  const [sessionFilter, setSessionFilter] = useState("");
   const [projectMemory, setProjectMemory] =
     useState<ProjectMemoryStatus | null>(null);
   const [workflows, setWorkflows] = useState<WorkflowDefinition[]>([]);
@@ -67,12 +73,6 @@ function App() {
   const workspace = workspaces.find(
     (item) => item.workspace_id === workspaceId,
   );
-
-  useEffect(() => {
-    if (theme === "system") delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = theme;
-    localStorage.setItem("harness-theme", theme);
-  }, [theme]);
 
   const refreshWorkspaces = useCallback(async () => {
     const values = await api.workspaces();
@@ -305,6 +305,22 @@ function App() {
         .includes(query),
     );
   }, [session, eventFilter]);
+  const filteredWorkspaces = useMemo(() => {
+    const query = workspaceFilter.trim().toLowerCase();
+    return query
+      ? workspaces.filter((item) =>
+          [item.label, item.path].join(" ").toLowerCase().includes(query),
+        )
+      : workspaces;
+  }, [workspaceFilter, workspaces]);
+  const filteredSessions = useMemo(() => {
+    const query = sessionFilter.trim().toLowerCase();
+    return query
+      ? sessions.filter((item) =>
+          [item.preview, item.summary].join(" ").toLowerCase().includes(query),
+        )
+      : sessions;
+  }, [sessionFilter, sessions]);
 
   const tokens =
     session?.events.reduce(
@@ -313,413 +329,460 @@ function App() {
     ) ?? 0;
 
   return (
-    <div className="app-shell">
-      <header className="topbar">
-        <div>
-          <span className="logo">H</span>
-          <strong>Local AI Harness</strong>
-          <a className="top-nav-link" href="/speech">
-            Speaking avatar
-          </a>
-        </div>
-        <div className="status-line">
-          <span className={`dot ${connected ? "ok" : "bad"}`} />
-          {connected ? "Connected" : "Disconnected"}
-          <span>{session?.model || model}</span>
-          <span>{tokens.toLocaleString()} tokens</span>
-          <button
-            className="theme-toggle"
-            aria-label={`Theme: ${theme}. Change theme`}
-            onClick={() => setTheme(nextTheme(theme))}
-          >
-            Theme: {theme}
-          </button>
-        </div>
-      </header>
-      <aside className="left-panel">
-        <div className="panel-heading">
-          <span>Workspaces</span>
-          <button
-            aria-label="Add workspace"
-            onClick={() => setShowWorkspace(true)}
-          >
-            ＋
-          </button>
-        </div>
-        <nav aria-label="Workspaces">
-          {workspaces.map((item) => (
+    <>
+      <AppHeader
+        current="chat"
+        title="Workspace Chat"
+        status={
+          <StatusRegion tone={connected ? "success" : "danger"}>
+            <span>{connected ? "Connected" : "Disconnected"}</span>
+            <span aria-hidden="true">·</span>
+            <span>{tokens.toLocaleString()} tokens</span>
+          </StatusRegion>
+        }
+      />
+      <div
+        className={`app-shell redesigned ${leftCollapsed ? "left-collapsed" : ""} ${rightCollapsed ? "right-collapsed" : ""}`}
+      >
+        <aside
+          className="left-panel"
+          aria-label="Workspace and session navigation"
+        >
+          <div className="panel-heading">
+            <span>Workspaces</span>
             <button
-              className={`nav-item ${item.workspace_id === workspaceId ? "selected" : ""}`}
-              key={item.workspace_id}
-              onClick={() => void changeWorkspace(item.workspace_id)}
-            >
-              <span>{item.label}</span>
-              <small>{item.busy ? "Working" : item.path}</small>
-            </button>
-          ))}
-        </nav>
-        <div className="panel-heading">
-          <span>Sessions</span>
-          <button aria-label="New session" onClick={() => void createSession()}>
-            ＋
-          </button>
-        </div>
-        <nav aria-label="Sessions" className="sessions">
-          {sessions.map((item) => (
-            <button
-              className={`nav-item ${item.session_id === session?.session_id ? "selected" : ""}`}
-              key={item.session_id}
-              onClick={() => void loadSession(workspaceId, item.session_id)}
-            >
-              <span>{item.preview || "New session"}</span>
-              <small>{new Date(item.updated_at).toLocaleString()}</small>
-            </button>
-          ))}
-        </nav>
-      </aside>
-      <main className="conversation">
-        <div className="conversation-head">
-          <div>
-            <strong>{workspace?.label ?? "Workspace"}</strong>
-            <small>{session?.session_id.slice(0, 8)}</small>
-          </div>
-          <div className="actions">
-            <label className="model-select">
-              <span>Model</span>
-              <select
-                aria-label="Model for current session"
-                disabled={!session || busy}
-                value={session?.model ?? model}
-                onChange={(event) => void changeModel(event.target.value)}
-              >
-                {models.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <button onClick={() => setShowMobileActivity(true)}>
-              Activity
-            </button>
-            <SessionMenu
-              workspaceId={workspaceId}
-              session={session}
-              busy={busy}
-              onNotice={setNotice}
-              onReload={() =>
-                session && loadSession(workspaceId, session.session_id)
+              className="desktop-collapse"
+              aria-label={
+                leftCollapsed ? "Expand navigation" : "Collapse navigation"
               }
-            />
+              onClick={() => {
+                const next = !leftCollapsed;
+                setLeftCollapsed(next);
+                localStorage.setItem(
+                  "harness-left-panel",
+                  next ? "collapsed" : "expanded",
+                );
+              }}
+            >
+              {leftCollapsed ? "›" : "‹"}
+            </button>
+            <button
+              aria-label="Add workspace"
+              onClick={() => setShowWorkspace(true)}
+            >
+              ＋
+            </button>
           </div>
-        </div>
-        <div className="transcript" aria-live="polite">
-          {!session?.messages.length && (
-            <div className="empty">
-              <h2>What shall we build?</h2>
-              <p>
+          <input
+            className="panel-search"
+            type="search"
+            aria-label="Search workspaces"
+            placeholder="Search workspaces"
+            value={workspaceFilter}
+            onChange={(event) => setWorkspaceFilter(event.target.value)}
+          />
+          <nav aria-label="Workspaces">
+            {filteredWorkspaces.map((item) => (
+              <button
+                className={`nav-item ${item.workspace_id === workspaceId ? "selected" : ""}`}
+                key={item.workspace_id}
+                onClick={() => void changeWorkspace(item.workspace_id)}
+              >
+                <span>{item.label}</span>
+                <small>{item.busy ? "Working" : item.path}</small>
+              </button>
+            ))}
+          </nav>
+          <div className="panel-heading">
+            <span>Sessions</span>
+            <button
+              aria-label="New session"
+              onClick={() => void createSession()}
+            >
+              ＋
+            </button>
+          </div>
+          <input
+            className="panel-search"
+            type="search"
+            aria-label="Search sessions"
+            placeholder="Search sessions"
+            value={sessionFilter}
+            onChange={(event) => setSessionFilter(event.target.value)}
+          />
+          <nav aria-label="Sessions" className="sessions">
+            {filteredSessions.map((item) => (
+              <button
+                className={`nav-item ${item.session_id === session?.session_id ? "selected" : ""}`}
+                key={item.session_id}
+                onClick={() => void loadSession(workspaceId, item.session_id)}
+              >
+                <span>{item.preview || "New session"}</span>
+                <small>{new Date(item.updated_at).toLocaleString()}</small>
+              </button>
+            ))}
+          </nav>
+        </aside>
+        <main className="conversation" id="main-content">
+          <div className="conversation-head">
+            <div>
+              <strong>{workspace?.label ?? "Workspace"}</strong>
+              <small>{session?.session_id.slice(0, 8)}</small>
+            </div>
+            <div className="actions">
+              <label className="model-select">
+                <span>Model</span>
+                <select
+                  aria-label="Model for current session"
+                  disabled={!session || busy}
+                  value={session?.model ?? model}
+                  onChange={(event) => void changeModel(event.target.value)}
+                >
+                  {models.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button onClick={() => setShowMobileActivity(true)}>
+                Activity
+              </button>
+              <button
+                className="desktop-activity-toggle"
+                onClick={() => {
+                  const next = !rightCollapsed;
+                  setRightCollapsed(next);
+                  localStorage.setItem(
+                    "harness-right-panel",
+                    next ? "collapsed" : "expanded",
+                  );
+                }}
+              >
+                {rightCollapsed ? "Show activity" : "Hide activity"}
+              </button>
+              <SessionMenu
+                workspaceId={workspaceId}
+                session={session}
+                busy={busy}
+                onNotice={setNotice}
+                onReload={() =>
+                  session && loadSession(workspaceId, session.session_id)
+                }
+              />
+            </div>
+          </div>
+          <div className="transcript" aria-live="polite">
+            {!session?.messages.length && (
+              <EmptyState title="What shall we build?">
                 Describe a task. The harness will inspect, act with approval,
                 and verify.
-              </p>
-            </div>
-          )}
-          {session?.messages.map((message, index) => (
-            <div
-              className="request-block"
-              key={`${message.request_number}-${message.role}-${index}`}
-            >
-              <article className={`message ${message.role}`}>
-                <div className="role">
-                  {message.role === "user" ? "You" : "Assistant"}
-                </div>
-                {message.role === "assistant" ? (
-                  <SafeMarkdown text={message.content} />
-                ) : (
-                  <p>{message.content}</p>
-                )}
-              </article>
-              {message.role === "user" && (
-                <RequestActivity
-                  requestNumber={message.request_number}
-                  events={session.events}
-                  busy={busy}
-                />
-              )}
-            </div>
-          ))}
-        </div>
-        <div className="composer-wrap">
-          <label className="workflow-select">
-            <span>Workflow</span>
-            <select
-              aria-label="Workflow for next request"
-              disabled={busy || !session}
-              value={selectedWorkflow}
-              onChange={(event) => setSelectedWorkflow(event.target.value)}
-            >
-              <option value="">Auto-select</option>
-              {workflows
-                .filter((item) => item.workflow_id !== "general_assistance")
-                .map((item) => (
-                  <option value={item.workflow_id} key={item.workflow_id}>
-                    {item.title}
-                  </option>
-                ))}
-            </select>
-          </label>
-          <textarea
-            aria-label="Prompt"
-            value={prompt}
-            disabled={busy || !session}
-            onChange={(event) => setPrompt(event.target.value)}
-            onKeyDown={composerKeyDown}
-            placeholder={
-              busy ? "The harness is working…" : "Ask about this workspace…"
-            }
-          />
-          <button
-            className="send"
-            disabled={busy || !prompt.trim()}
-            onClick={() => void sendPrompt()}
-          >
-            Send
-          </button>
-          <div className="composer-foot">
-            <span>Ctrl+Enter to send</span>
-            <span>{notice}</span>
-          </div>
-        </div>
-      </main>
-      <aside
-        className={`right-panel ${showMobileActivity ? "mobile-open" : ""}`}
-      >
-        <div className="panel-heading">
-          <span>Activity</span>
-          <button onClick={() => setShowMobileActivity(false)}>×</button>
-        </div>
-        <input
-          className="filter"
-          aria-label="Filter events"
-          placeholder="Filter model, tool, errors, tags…"
-          value={eventFilter}
-          onChange={(event) => setEventFilter(event.target.value)}
-        />
-        <section
-          className="plan-card evaluation-card"
-          aria-label="Harness evaluation"
-        >
-          <strong>Harness evaluation</strong>
-          {evaluationStatus?.enabled ? (
-            <>
-              <p>
-                {evaluationStatus.pass_rate}% pass ·{" "}
-                {evaluationStatus.verification_rate}% verified
-              </p>
-              <small>
-                {evaluationStatus.observations} observations ·{" "}
-                {evaluationStatus.llm_calls} calls · {evaluationStatus.tokens}{" "}
-                tokens
-              </small>
-              <div className="memory-actions">
-                <button
-                  disabled={busy}
-                  onClick={() => void runSlashCommand("/eval run core")}
-                >
-                  Run offline suite
-                </button>
-                <button
-                  disabled={busy || !session}
-                  onClick={async () => {
-                    if (!session) return;
-                    setBusy(true);
-                    try {
-                      await api.proposeCandidate(
-                        workspaceId,
-                        session.session_id,
-                      );
-                      setCandidates(await api.candidates(workspaceId));
-                      setNotice(
-                        "Candidate proposal recorded; no source was changed.",
-                      );
-                    } catch (error) {
-                      setNotice(
-                        error instanceof Error
-                          ? error.message
-                          : "Proposal failed",
-                      );
-                    } finally {
-                      setBusy(false);
-                    }
-                  }}
-                >
-                  Propose improvement
-                </button>
-              </div>
-              {evaluationHistory.slice(0, 3).map((item) => (
-                <small key={item.observation_id}>
-                  Request {item.request_number}: {item.score.outcome} ·{" "}
-                  {item.score.input_tokens + item.score.output_tokens} tokens
-                </small>
-              ))}
-              {candidates.slice(0, 2).map((candidate) => (
-                <div className="candidate-card" key={candidate.candidate_id}>
-                  <small>
-                    {candidate.component_ids.join(", ")} · {candidate.status}
-                  </small>
-                  <p>{candidate.proposal}</p>
-                  {candidate.status === "proposed" && (
-                    <div className="memory-actions">
-                      <button
-                        onClick={async () => {
-                          await api.decideCandidate(
-                            workspaceId,
-                            candidate.candidate_id,
-                            true,
-                          );
-                          setCandidates(await api.candidates(workspaceId));
-                        }}
-                      >
-                        Approve proposal
-                      </button>
-                      <button
-                        onClick={async () => {
-                          await api.decideCandidate(
-                            workspaceId,
-                            candidate.candidate_id,
-                            false,
-                          );
-                          setCandidates(await api.candidates(workspaceId));
-                        }}
-                      >
-                        Reject
-                      </button>
-                    </div>
+              </EmptyState>
+            )}
+            {session?.messages.map((message, index) => (
+              <div
+                className="request-block"
+                key={`${message.request_number}-${message.role}-${index}`}
+              >
+                <article className={`message ${message.role}`}>
+                  <div className="role">
+                    {message.role === "user" ? "You" : "Assistant"}
+                  </div>
+                  {message.role === "assistant" ? (
+                    <SafeMarkdown text={message.content} />
+                  ) : (
+                    <p>{message.content}</p>
                   )}
-                </div>
-              ))}
-            </>
-          ) : (
-            <p className="muted">Disabled</p>
-          )}
-        </section>
-        <section className="plan-card memory-card" aria-label="Project memory">
-          <strong>Project memory</strong>
-          {projectMemory ? (
-            <>
-              <p>
-                {projectMemory.retrieval_mode} · generation{" "}
-                {projectMemory.generation}
-              </p>
-              <small>
-                {projectMemory.files} files · {projectMemory.symbols} symbols ·{" "}
-                {projectMemory.dependencies} dependencies
-              </small>
-              <small>
-                {projectMemory.embedding_model} ·{" "}
-                {projectMemory.embedding_available
-                  ? "embeddings ready"
-                  : "lexical fallback"}
-              </small>
-              {projectMemory.warning && (
-                <p className="warning-text">⚠ {projectMemory.warning}</p>
-              )}
-              <div className="memory-actions">
-                <button
-                  disabled={busy}
-                  onClick={() => void runSlashCommand("/index refresh")}
-                >
-                  Refresh
-                </button>
-                <button
-                  disabled={busy}
-                  onClick={() => void runSlashCommand("/index rebuild")}
-                >
-                  Rebuild
-                </button>
+                </article>
+                {message.role === "user" && (
+                  <RequestActivity
+                    requestNumber={message.request_number}
+                    events={session.events}
+                    busy={busy}
+                  />
+                )}
               </div>
-            </>
-          ) : (
-            <p className="muted">Disabled</p>
-          )}
-        </section>
-        {session?.plans?.length ? (
-          <section className="plan-card" aria-label="Current task plan">
-            <strong>{session.plans.at(-1)?.goal}</strong>
-            <ol>
-              {session.plans.at(-1)?.steps.map((step) => (
-                <li key={step.step_id} data-status={step.status}>
-                  <span>{step.status.replace("_", " ")}</span>{" "}
-                  {step.description}
-                </li>
-              ))}
-            </ol>
-          </section>
-        ) : null}
-        {session?.workflows?.length ? (
-          <section
-            className="plan-card workflow-card"
-            aria-label="Current workflow"
-          >
-            <strong>
-              Workflow:{" "}
-              {session.workflows.at(-1)?.workflow_id.replaceAll("_", " ")}
-            </strong>
-            <p>
-              {session.workflows.at(-1)?.status} · confidence{" "}
-              {Math.round((session.workflows.at(-1)?.confidence ?? 0) * 100)}%
-            </p>
-            <ol>
-              {session.workflows.at(-1)?.stages.map((stage) => (
-                <li key={stage.stage_id} data-status={stage.status}>
-                  <span>{stage.status.replace("_", " ")}</span>{" "}
-                  {stage.description}
-                </li>
-              ))}
-            </ol>
-          </section>
-        ) : null}
-        <div className="event-list">
-          {filteredEvents
-            .slice()
-            .reverse()
-            .map((event) => (
-              <EventRow event={event} key={event.sequence} />
             ))}
-          {!filteredEvents.length && <p className="muted">No activity yet.</p>}
-        </div>
-      </aside>
-      {approval && (
-        <ApprovalDialog
-          approval={approval}
-          workspaceId={workspaceId}
-          onClose={() => setApproval(null)}
-          onNotice={setNotice}
-        />
-      )}
-      {showWorkspace && (
-        <WorkspaceDialog
-          onClose={() => setShowWorkspace(false)}
-          onAdded={async () => {
-            await refreshWorkspaces();
-            setShowWorkspace(false);
-          }}
-        />
-      )}
-      {showHelp && (
-        <Modal title="Harness help" onClose={() => setShowHelp(false)}>
-          <p>
-            <kbd>Ctrl</kbd>+<kbd>Enter</kbd> sends a prompt. Every command,
-            patch, and maintenance action requires explicit approval.
-          </p>
-          <p>
-            Commands: /new, /sessions, /events, /max-turns, /quota, /tag, /tags,
-            /export, /archive, /archives, /restore, /session-info, /summarize,
-            /session-check, /plugins, /tools, /workflows, /workflow, /plan,
-            /index, /memory, /eval, /handoff, /candidate, /help, /exit.
-          </p>
-        </Modal>
-      )}
-    </div>
+          </div>
+          <div className="composer-wrap">
+            <label className="workflow-select">
+              <span>Workflow</span>
+              <select
+                aria-label="Workflow for next request"
+                disabled={busy || !session}
+                value={selectedWorkflow}
+                onChange={(event) => setSelectedWorkflow(event.target.value)}
+              >
+                <option value="">Auto-select</option>
+                {workflows
+                  .filter((item) => item.workflow_id !== "general_assistance")
+                  .map((item) => (
+                    <option value={item.workflow_id} key={item.workflow_id}>
+                      {item.title}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <textarea
+              aria-label="Prompt"
+              value={prompt}
+              disabled={busy || !session}
+              onChange={(event) => setPrompt(event.target.value)}
+              onKeyDown={composerKeyDown}
+              placeholder={
+                busy ? "The harness is working…" : "Ask about this workspace…"
+              }
+            />
+            <button
+              className="send"
+              disabled={busy || !prompt.trim()}
+              onClick={() => void sendPrompt()}
+            >
+              Send
+            </button>
+            <div className="composer-foot">
+              <span>Ctrl+Enter to send</span>
+              <span>{notice}</span>
+            </div>
+          </div>
+        </main>
+        <aside
+          className={`right-panel ${showMobileActivity ? "mobile-open" : ""}`}
+        >
+          <div className="panel-heading">
+            <span>Activity</span>
+            <button onClick={() => setShowMobileActivity(false)}>×</button>
+          </div>
+          <input
+            className="filter"
+            aria-label="Filter events"
+            placeholder="Filter model, tool, errors, tags…"
+            value={eventFilter}
+            onChange={(event) => setEventFilter(event.target.value)}
+          />
+          <section
+            className="plan-card evaluation-card"
+            aria-label="Harness evaluation"
+          >
+            <strong>Harness evaluation</strong>
+            {evaluationStatus?.enabled ? (
+              <>
+                <p>
+                  {evaluationStatus.pass_rate}% pass ·{" "}
+                  {evaluationStatus.verification_rate}% verified
+                </p>
+                <small>
+                  {evaluationStatus.observations} observations ·{" "}
+                  {evaluationStatus.llm_calls} calls · {evaluationStatus.tokens}{" "}
+                  tokens
+                </small>
+                <div className="memory-actions">
+                  <button
+                    disabled={busy}
+                    onClick={() => void runSlashCommand("/eval run core")}
+                  >
+                    Run offline suite
+                  </button>
+                  <button
+                    disabled={busy || !session}
+                    onClick={async () => {
+                      if (!session) return;
+                      setBusy(true);
+                      try {
+                        await api.proposeCandidate(
+                          workspaceId,
+                          session.session_id,
+                        );
+                        setCandidates(await api.candidates(workspaceId));
+                        setNotice(
+                          "Candidate proposal recorded; no source was changed.",
+                        );
+                      } catch (error) {
+                        setNotice(
+                          error instanceof Error
+                            ? error.message
+                            : "Proposal failed",
+                        );
+                      } finally {
+                        setBusy(false);
+                      }
+                    }}
+                  >
+                    Propose improvement
+                  </button>
+                </div>
+                {evaluationHistory.slice(0, 3).map((item) => (
+                  <small key={item.observation_id}>
+                    Request {item.request_number}: {item.score.outcome} ·{" "}
+                    {item.score.input_tokens + item.score.output_tokens} tokens
+                  </small>
+                ))}
+                {candidates.slice(0, 2).map((candidate) => (
+                  <div className="candidate-card" key={candidate.candidate_id}>
+                    <small>
+                      {candidate.component_ids.join(", ")} · {candidate.status}
+                    </small>
+                    <p>{candidate.proposal}</p>
+                    {candidate.status === "proposed" && (
+                      <div className="memory-actions">
+                        <button
+                          onClick={async () => {
+                            await api.decideCandidate(
+                              workspaceId,
+                              candidate.candidate_id,
+                              true,
+                            );
+                            setCandidates(await api.candidates(workspaceId));
+                          }}
+                        >
+                          Approve proposal
+                        </button>
+                        <button
+                          onClick={async () => {
+                            await api.decideCandidate(
+                              workspaceId,
+                              candidate.candidate_id,
+                              false,
+                            );
+                            setCandidates(await api.candidates(workspaceId));
+                          }}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </>
+            ) : (
+              <p className="muted">Disabled</p>
+            )}
+          </section>
+          <section
+            className="plan-card memory-card"
+            aria-label="Project memory"
+          >
+            <strong>Project memory</strong>
+            {projectMemory ? (
+              <>
+                <p>
+                  {projectMemory.retrieval_mode} · generation{" "}
+                  {projectMemory.generation}
+                </p>
+                <small>
+                  {projectMemory.files} files · {projectMemory.symbols} symbols
+                  · {projectMemory.dependencies} dependencies
+                </small>
+                <small>
+                  {projectMemory.embedding_model} ·{" "}
+                  {projectMemory.embedding_available
+                    ? "embeddings ready"
+                    : "lexical fallback"}
+                </small>
+                {projectMemory.warning && (
+                  <p className="warning-text">⚠ {projectMemory.warning}</p>
+                )}
+                <div className="memory-actions">
+                  <button
+                    disabled={busy}
+                    onClick={() => void runSlashCommand("/index refresh")}
+                  >
+                    Refresh
+                  </button>
+                  <button
+                    disabled={busy}
+                    onClick={() => void runSlashCommand("/index rebuild")}
+                  >
+                    Rebuild
+                  </button>
+                </div>
+              </>
+            ) : (
+              <p className="muted">Disabled</p>
+            )}
+          </section>
+          {session?.plans?.length ? (
+            <section className="plan-card" aria-label="Current task plan">
+              <strong>{session.plans.at(-1)?.goal}</strong>
+              <ol>
+                {session.plans.at(-1)?.steps.map((step) => (
+                  <li key={step.step_id} data-status={step.status}>
+                    <span>{step.status.replace("_", " ")}</span>{" "}
+                    {step.description}
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ) : null}
+          {session?.workflows?.length ? (
+            <section
+              className="plan-card workflow-card"
+              aria-label="Current workflow"
+            >
+              <strong>
+                Workflow:{" "}
+                {session.workflows.at(-1)?.workflow_id.replaceAll("_", " ")}
+              </strong>
+              <p>
+                {session.workflows.at(-1)?.status} · confidence{" "}
+                {Math.round((session.workflows.at(-1)?.confidence ?? 0) * 100)}%
+              </p>
+              <ol>
+                {session.workflows.at(-1)?.stages.map((stage) => (
+                  <li key={stage.stage_id} data-status={stage.status}>
+                    <span>{stage.status.replace("_", " ")}</span>{" "}
+                    {stage.description}
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ) : null}
+          <div className="event-list">
+            {filteredEvents
+              .slice()
+              .reverse()
+              .map((event) => (
+                <EventRow event={event} key={event.sequence} />
+              ))}
+            {!filteredEvents.length && (
+              <p className="muted">No activity yet.</p>
+            )}
+          </div>
+        </aside>
+        {approval && (
+          <ApprovalDialog
+            approval={approval}
+            workspaceId={workspaceId}
+            onClose={() => setApproval(null)}
+            onNotice={setNotice}
+          />
+        )}
+        {showWorkspace && (
+          <WorkspaceDialog
+            onClose={() => setShowWorkspace(false)}
+            onAdded={async () => {
+              await refreshWorkspaces();
+              setShowWorkspace(false);
+            }}
+          />
+        )}
+        {showHelp && (
+          <Modal title="Harness help" onClose={() => setShowHelp(false)}>
+            <p>
+              <kbd>Ctrl</kbd>+<kbd>Enter</kbd> sends a prompt. Every command,
+              patch, and maintenance action requires explicit approval.
+            </p>
+            <p>
+              Commands: /new, /sessions, /events, /max-turns, /quota, /tag,
+              /tags, /export, /archive, /archives, /restore, /session-info,
+              /summarize, /session-check, /plugins, /tools, /workflows,
+              /workflow, /plan, /index, /memory, /eval, /handoff, /candidate,
+              /help, /exit.
+            </p>
+          </Modal>
+        )}
+      </div>
+    </>
   );
 }
 

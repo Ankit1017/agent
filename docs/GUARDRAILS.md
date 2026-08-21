@@ -1,5 +1,17 @@
 # Guardrails
 
+## Browser usability and accessibility
+
+- Shared UI components never receive credentials, raw provider payloads, restored secrets, or
+  unredacted tool arguments.
+- Theme, density, and collapsed-panel preferences contain presentation state only.
+- Every mutation continues through the existing same-origin cookie, Origin, and CSRF boundary;
+  visual controls do not weaken approval or policy enforcement.
+- Normal text and interactive states target WCAG 2.2 AA contrast, keyboard focus remains visible,
+  dialogs and mobile navigation support Escape, and visible status text accompanies animation.
+- Layouts must not overflow horizontally at 390, 768, 1024, or 1440 CSS pixels and must respect
+  `prefers-reduced-motion`.
+
 ## Local speech
 
 - Speech text passes through `SecretRedactor` before synthesis and is never restored, logged,

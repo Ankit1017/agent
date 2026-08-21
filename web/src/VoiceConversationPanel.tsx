@@ -3,6 +3,7 @@ import { ApprovalDialog, SafeMarkdown } from "./App";
 import { api, bootstrap, clientId } from "./api";
 import { LocalSpeechInputClient } from "./speech-input-client";
 import { PcmPlayer, type PcmMetadata, wavBlob } from "./speech-audio";
+import { AppHeader, EmptyState, StatusRegion } from "./ui";
 import type {
   SpeechVoice,
   VoiceConversationDetail,
@@ -665,26 +666,37 @@ export default function VoiceConversationPanel({
   ].includes(state);
   return (
     <div className="speech-page voice-chat-page">
-      <header className="speech-topbar">
-        <div>
-          <span className="logo">H</span>
-          <strong>Local Speaking Avatar</strong>
-        </div>
-        <nav className="agent-top-nav">
-          <a href="/speech/agents">Configure agents</a>
-          <a className="top-nav-link" href="/">
-            Back to chat
-          </a>
-        </nav>
-      </header>
+      <AppHeader
+        current="speech"
+        title="Voice Conversation"
+        status={
+          <StatusRegion
+            tone={
+              state === "error"
+                ? "danger"
+                : speaking || generating
+                  ? "info"
+                  : "success"
+            }
+          >
+            {speaking ? "Speaking" : generating ? "Generating" : "Voice ready"}
+          </StatusRegion>
+        }
+      />
       <nav className="speech-mode-tabs" aria-label="Speech mode">
         <button className="active" aria-current="page">
           Voice Conversation
         </button>
         <button onClick={onDirect}>Direct Text-to-Speech</button>
       </nav>
-      <main className="voice-chat-main">
+      <main className="voice-chat-main" id="main-content">
         <aside className="voice-conversation-sidebar">
+          <div className="section-heading">
+            <div>
+              <span>Conversations</span>
+              <strong>Saved voice chats</strong>
+            </div>
+          </div>
           <button
             className="send"
             disabled={generating}
@@ -786,6 +798,17 @@ export default function VoiceConversationPanel({
             >
               Delete
             </button>
+          </div>
+        </aside>
+        <aside
+          className="voice-settings-panel"
+          aria-label="Voice and microphone settings"
+        >
+          <div className="section-heading">
+            <div>
+              <span>Input and output</span>
+              <strong>Voice settings</strong>
+            </div>
           </div>
           <label>
             Voice
@@ -897,10 +920,10 @@ export default function VoiceConversationPanel({
               </button>
             )}
             {!conversation?.messages.length && (
-              <p className="empty-state">
-                Type a message to begin. Replies are saved as text and spoken
+              <EmptyState title="Start a voice conversation">
+                Type or speak a message. Replies are saved as text and spoken
                 automatically.
-              </p>
+              </EmptyState>
             )}
             {conversation?.messages.map((message) => (
               <article

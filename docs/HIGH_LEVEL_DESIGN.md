@@ -1,5 +1,15 @@
 # High-Level Design
 
+## Unified browser workspace
+
+The React presentation uses one shared application shell across Chat, Speech, Voice Agents, and
+optional modules. A route-aware module switcher, semantic design tokens, persistent theme/density
+preferences, and reusable status/dialog/empty-state components keep navigation and feedback
+consistent without sharing conversation or task state. Page layouts remain specialized: Chat keeps
+its collapsible inspection panels, Speech prioritizes its transcript, and profile configuration uses
+a searchable master-detail editor. The Studio branch consumes the same shell while remaining absent
+from the protected main runtime.
+
 ## Local speaking avatar
 
 Speech is an optional localhost-only subsystem, independent of chat sessions and workspace tasks.

@@ -104,7 +104,7 @@ describe("independent speech page", () => {
     render(<SpeechApp onVoice={vi.fn()} />);
     expect(await screen.findByText(/setup-voices.ps1/)).toBeVisible();
     expect(screen.getByRole("button", { name: "Speak" })).toBeDisabled();
-    expect(screen.getByRole("link", { name: "Back to chat" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute(
       "href",
       "/",
     );

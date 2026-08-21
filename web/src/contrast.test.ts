@@ -26,6 +26,16 @@ describe("semantic theme contrast", () => {
     ["light primary", "#17212b", "#ffffff", 7],
     ["light secondary", "#3f4d5d", "#ffffff", 7],
     ["light supporting", "#5f6f82", "#ffffff", 4.5],
+    ["dark accent", "#38bdf8", "#111923", 4.5],
+    ["dark action", "#ffffff", "#0e7490", 4.5],
+    ["dark success", "#86efac", "#111923", 4.5],
+    ["dark warning", "#fcd34d", "#111923", 4.5],
+    ["dark error", "#fca5a5", "#111923", 4.5],
+    ["light accent", "#0369a1", "#ffffff", 4.5],
+    ["light action", "#ffffff", "#075985", 4.5],
+    ["light success", "#166534", "#ffffff", 4.5],
+    ["light warning", "#854d0e", "#ffffff", 4.5],
+    ["light error", "#b91c1c", "#ffffff", 4.5],
   ])("keeps %s text readable", (_name, foreground, background, minimum) => {
     expect(contrast(foreground, background)).toBeGreaterThanOrEqual(minimum);
   });

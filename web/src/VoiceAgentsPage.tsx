@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { api, bootstrap } from "./api";
 import type { VoiceAgentCatalog, VoiceAgentProfile } from "./types";
+import { AppDialog, AppHeader, Badge, StatusRegion } from "./ui";
 
 type EditableProfile = Omit<
   VoiceAgentProfile,
@@ -38,10 +39,49 @@ export default function VoiceAgentsPage() {
   const [draft, setDraft] = useState<EditableProfile>(emptyProfile);
   const [notice, setNotice] = useState("Loading voice-agent configuration...");
   const [saving, setSaving] = useState(false);
+  const [profileSearch, setProfileSearch] = useState("");
+  const [toolSearch, setToolSearch] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<VoiceAgentProfile | null>(
+    null,
+  );
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
+  const [baseline, setBaseline] = useState(JSON.stringify(emptyProfile));
+  const [pendingProfile, setPendingProfile] =
+    useState<VoiceAgentProfile | null>(null);
+  const [pendingNew, setPendingNew] = useState(false);
   const workspace = catalog?.workspaces.find(
     (item) => item.workspace_id === draft.workspace_id,
   );
   const tools = useMemo(() => workspace?.tools ?? [], [workspace]);
+  const visibleProfiles = useMemo(() => {
+    const query = profileSearch.trim().toLowerCase();
+    return query
+      ? profiles.filter((profile) =>
+          [profile.name, profile.model].join(" ").toLowerCase().includes(query),
+        )
+      : profiles;
+  }, [profileSearch, profiles]);
+  const visibleTools = useMemo(() => {
+    const query = toolSearch.trim().toLowerCase();
+    return query
+      ? tools.filter((tool) =>
+          [tool.name, tool.description, tool.profile, tool.risk]
+            .join(" ")
+            .toLowerCase()
+            .includes(query),
+        )
+      : tools;
+  }, [toolSearch, tools]);
+  const dirty = JSON.stringify(draft) !== baseline;
+
+  useEffect(() => {
+    const protect = (event: BeforeUnloadEvent) => {
+      if (!dirty) return;
+      event.preventDefault();
+    };
+    window.addEventListener("beforeunload", protect);
+    return () => window.removeEventListener("beforeunload", protect);
+  }, [dirty]);
 
   async function refresh(preferred?: string) {
     const values = await api.voiceAgentProfiles();
@@ -58,7 +98,7 @@ export default function VoiceAgentsPage() {
         ]);
         setCatalog(nextCatalog);
         setProfiles(nextProfiles);
-        setDraft({
+        const initialDraft = {
           ...emptyProfile,
           workspace_id: nextCatalog.workspaces[0]?.workspace_id ?? "",
           model: nextCatalog.models[0] ?? "",
@@ -69,13 +109,15 @@ export default function VoiceAgentsPage() {
           context_max_chars: Array.isArray(nextCatalog.bounds.context_max_chars)
             ? nextCatalog.bounds.context_max_chars[1]
             : 30000,
-        });
+        };
+        setDraft(initialDraft);
+        setBaseline(JSON.stringify(initialDraft));
         setNotice("Profiles are snapshotted when a conversation starts.");
       })
       .catch((error: Error) => setNotice(error.message));
   }, []);
 
-  function edit(profile: VoiceAgentProfile) {
+  function loadProfile(profile: VoiceAgentProfile) {
     const value = { ...profile } as Partial<VoiceAgentProfile>;
     delete value.profile_id;
     delete value.revision;
@@ -84,10 +126,34 @@ export default function VoiceAgentsPage() {
     delete value.available;
     delete value.unavailable_reasons;
     setSelectedId(profile.profile_id);
-    setDraft(value as EditableProfile);
+    const next = value as EditableProfile;
+    setDraft(next);
+    setBaseline(JSON.stringify(next));
     setNotice(
       `Editing revision ${profile.revision}. Existing conversations stay unchanged.`,
     );
+  }
+
+  function edit(profile: VoiceAgentProfile) {
+    if (dirty) {
+      setPendingProfile(profile);
+      return;
+    }
+    loadProfile(profile);
+  }
+
+  function startNew() {
+    if (!catalog) return;
+    const next = {
+      ...emptyProfile,
+      workspace_id: catalog.workspaces[0]?.workspace_id ?? "",
+      model: catalog.models[0] ?? "",
+      voice_id: catalog.voices[0]?.voice_id ?? "",
+    };
+    setSelectedId("");
+    setDraft(next);
+    setBaseline(JSON.stringify(next));
+    setNotice("Create a profile from the safe defaults or a template.");
   }
 
   function applyTemplate(id: string) {
@@ -112,7 +178,7 @@ export default function VoiceAgentsPage() {
         ? await api.updateVoiceAgentProfile(selectedId, draft)
         : await api.createVoiceAgentProfile(draft);
       await refresh(saved.profile_id);
-      edit(saved);
+      loadProfile(saved);
       setNotice(`Saved ${saved.name} revision ${saved.revision}.`);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Profile save failed");
@@ -126,19 +192,26 @@ export default function VoiceAgentsPage() {
     try {
       const saved = await api.cloneVoiceAgentProfile(selectedId);
       await refresh(saved.profile_id);
-      edit(saved);
+      loadProfile(saved);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Clone failed");
     }
   }
 
-  async function remove() {
+  function remove() {
     const profile = profiles.find((item) => item.profile_id === selectedId);
-    if (!profile || !window.confirm(`Permanently delete "${profile.name}"?`))
-      return;
+    if (!profile) return;
+    setDeleteConfirmation("");
+    setDeleteTarget(profile);
+  }
+
+  async function confirmRemove() {
+    if (!deleteTarget || deleteConfirmation !== deleteTarget.name) return;
     try {
-      await api.deleteVoiceAgentProfile(selectedId);
+      await api.deleteVoiceAgentProfile(deleteTarget.profile_id);
       setSelectedId("");
+      setDeleteTarget(null);
+      setDeleteConfirmation("");
       await refresh();
       setNotice(
         "Profile deleted. Existing conversation snapshots remain available.",
@@ -160,44 +233,49 @@ export default function VoiceAgentsPage() {
   if (!catalog) return <main className="agent-config-loading">{notice}</main>;
   return (
     <div className="speech-page agent-config-page">
-      <header className="speech-topbar">
-        <div>
-          <span className="logo">H</span>
-          <strong>Voice Agent Profiles</strong>
-        </div>
-        <nav className="agent-top-nav">
-          <a href="/speech">Voice conversation</a>
-          <a href="/speech?mode=direct">Direct TTS</a>
-          <a href="/">Main chat</a>
-        </nav>
-      </header>
-      <main className="agent-config-layout">
+      <AppHeader
+        current="agents"
+        title="Voice Agent Profiles"
+        status={
+          <StatusRegion tone={saving ? "info" : "success"}>
+            {notice}
+          </StatusRegion>
+        }
+      />
+      <main className="agent-config-layout" id="main-content">
         <aside className="agent-profile-list">
           <button
             className="send"
             onClick={() => {
-              setSelectedId("");
-              setDraft({
-                ...emptyProfile,
-                workspace_id: catalog.workspaces[0]?.workspace_id ?? "",
-                model: catalog.models[0] ?? "",
-                voice_id: catalog.voices[0]?.voice_id ?? "",
-              });
+              if (dirty) setPendingNew(true);
+              else startNew();
             }}
           >
             New profile
           </button>
+          <label className="profile-search">
+            <span>Find profiles</span>
+            <input
+              type="search"
+              value={profileSearch}
+              onChange={(event) => setProfileSearch(event.target.value)}
+              placeholder="Search name or model"
+            />
+          </label>
           <article className="profile-card protected">
             <strong>Protected Voice Chat</strong>
             <small>Immutable · one call · no tools · no workspace</small>
           </article>
-          {profiles.map((profile) => (
+          {visibleProfiles.map((profile) => (
             <button
               key={profile.profile_id}
               className={`profile-card ${selectedId === profile.profile_id ? "selected" : ""}`}
               onClick={() => edit(profile)}
             >
               <strong>{profile.name}</strong>
+              <Badge tone={profile.available ? "success" : "danger"}>
+                {profile.available ? "Available" : "Unavailable"}
+              </Badge>
               <small>
                 Revision {profile.revision} ·{" "}
                 {profile.available ? "Available" : "Unavailable"}
@@ -212,6 +290,7 @@ export default function VoiceAgentsPage() {
           <div className="editor-heading">
             <div>
               <h1>{selectedId ? "Edit profile" : "Create profile"}</h1>
+              {dirty && <Badge tone="warning">Unsaved changes</Badge>}
               <p aria-live="polite">{notice}</p>
             </div>
             <div className="conversation-actions">
@@ -356,8 +435,21 @@ export default function VoiceAgentsPage() {
                   </button>
                 ))}
             </div>
+            <label className="tool-search">
+              Search available tools
+              <input
+                type="search"
+                value={toolSearch}
+                onChange={(event) => setToolSearch(event.target.value)}
+                placeholder="Name, capability, or risk"
+              />
+            </label>
+            <p className="tool-selection-summary">
+              {draft.allowed_tools.length} selected · {visibleTools.length}{" "}
+              shown
+            </p>
             <div className="tool-grid">
-              {tools.map((tool) => (
+              {visibleTools.map((tool) => (
                 <label className="tool-card" key={tool.name}>
                   <input
                     type="checkbox"
@@ -479,6 +571,91 @@ export default function VoiceAgentsPage() {
           </fieldset>
         </form>
       </main>
+      {deleteTarget && (
+        <AppDialog
+          title="Delete voice-agent profile"
+          onClose={() => setDeleteTarget(null)}
+          actions={
+            <>
+              <button type="button" onClick={() => setDeleteTarget(null)}>
+                Cancel
+              </button>
+              <button
+                className="danger-button"
+                type="button"
+                disabled={deleteConfirmation !== deleteTarget.name}
+                onClick={() => void confirmRemove()}
+              >
+                Delete permanently
+              </button>
+            </>
+          }
+        >
+          <p>
+            Existing conversation snapshots remain available. Type the exact
+            profile name to confirm permanent deletion.
+          </p>
+          <label>
+            Profile name
+            <input
+              autoComplete="off"
+              value={deleteConfirmation}
+              onChange={(event) => setDeleteConfirmation(event.target.value)}
+            />
+          </label>
+        </AppDialog>
+      )}
+      {pendingProfile && (
+        <AppDialog
+          title="Discard unsaved changes?"
+          onClose={() => setPendingProfile(null)}
+          actions={
+            <>
+              <button type="button" onClick={() => setPendingProfile(null)}>
+                Keep editing
+              </button>
+              <button
+                className="danger-button"
+                type="button"
+                onClick={() => {
+                  const target = pendingProfile;
+                  setPendingProfile(null);
+                  loadProfile(target);
+                }}
+              >
+                Discard and switch
+              </button>
+            </>
+          }
+        >
+          Your current profile changes have not been saved.
+        </AppDialog>
+      )}
+      {pendingNew && (
+        <AppDialog
+          title="Discard unsaved changes?"
+          onClose={() => setPendingNew(false)}
+          actions={
+            <>
+              <button type="button" onClick={() => setPendingNew(false)}>
+                Keep editing
+              </button>
+              <button
+                className="danger-button"
+                type="button"
+                onClick={() => {
+                  setPendingNew(false);
+                  startNew();
+                }}
+              >
+                Discard and create new
+              </button>
+            </>
+          }
+        >
+          Your current profile changes have not been saved.
+        </AppDialog>
+      )}
     </div>
   );
 }

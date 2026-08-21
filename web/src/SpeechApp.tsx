@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { api, bootstrap } from "./api";
 import { PcmPlayer, type PcmMetadata, wavBlob } from "./speech-audio";
 import type { SpeechVoice } from "./types";
+import { AppHeader, StatusRegion } from "./ui";
 
 type SpeechState = "idle" | "loading" | "speaking" | "stopped" | "error";
 
@@ -186,25 +187,24 @@ export default function DirectSpeechPanel({
   const busy = state === "loading" || state === "speaking";
   return (
     <div className="speech-page">
-      <header className="speech-topbar">
-        <div>
-          <span className="logo">H</span>
-          <strong>Local Speaking Avatar</strong>
-        </div>
-        <nav className="agent-top-nav">
-          <a href="/speech/agents">Configure agents</a>
-          <a className="top-nav-link" href="/">
-            Back to chat
-          </a>
-        </nav>
-      </header>
+      <AppHeader
+        current="speech"
+        title="Direct Text-to-Speech"
+        status={
+          <StatusRegion
+            tone={state === "error" ? "danger" : busy ? "info" : "success"}
+          >
+            {busy ? "Audio active" : "Local audio"}
+          </StatusRegion>
+        }
+      />
       <nav className="speech-mode-tabs" aria-label="Speech mode">
         <button onClick={onVoice}>Voice Conversation</button>
         <button className="active" aria-current="page">
           Direct Text-to-Speech
         </button>
       </nav>
-      <main className="speech-main">
+      <main className="speech-main" id="main-content">
         <section className="avatar-card" aria-label="Speaking avatar">
           <svg
             className={`speech-avatar ${busy ? "active" : ""}`}

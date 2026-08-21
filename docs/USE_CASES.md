@@ -1,5 +1,17 @@
 # Use Cases
 
+## Navigate and personalize the browser workspace
+
+The user switches between Chat, Speech, Voice Agents, and an available Studio module from the shared
+top bar. Direct navigation and refresh preserve the selected route. System/light/dark theme and
+comfortable/compact density choices persist locally, while conversation, profile, workspace, and
+project state remain isolated to their owning feature.
+
+On a desktop the user may collapse Chat navigation/activity or focus on the Voice transcript. On a
+small screen, module navigation and secondary information no longer obscure the primary task.
+Keyboard users can skip to main content, see focus, close navigation/dialogs with Escape, and receive
+visible live status for loading, listening, generation, approval, playback, and errors.
+
 ## Switch the session model
 
 The user lists aliases, selects one while idle, and sees the effective model. Unknown aliases and

@@ -1,5 +1,19 @@
 # Low-Level Design
 
+## Browser presentation system
+
+`web/src/ui.tsx` owns presentation-only shell primitives and preference behavior. Theme and density
+are stored under `harness-theme` and `harness-density`; panel state uses separate page-specific keys.
+`design-system.css` is loaded after legacy page rules and supplies semantic spacing, focus, surface,
+status, responsive, and reduced-motion behavior. It contains no API or domain logic.
+
+The top-level route selector remains dependency-free and supports direct navigation. At desktop
+widths Chat uses collapsible left/right panels, Voice Conversation uses conversation/content/settings
+regions, and Voice Agents uses master-detail editing. Below the documented breakpoints, secondary
+regions stack or become existing drawers while primary content remains scrollable. Dialogs close on
+Escape, restore an explicit control where applicable, and mutations retain their existing protected
+API paths.
+
 ## Streaming speech boundary
 
 `domain/speech.py` defines immutable voice, request, PCM-format, and stream values.
