@@ -152,7 +152,11 @@ def test_browser_api_security_workspace_and_session_flows(tmp_path: Path) -> Non
         assert legacy_error.headers["location"] == "/"
         assert client.get("/_app/immutable/old.js").status_code == 410
         assert client.get("/static/old.css").status_code == 410
-        assert client.get("/").headers["cache-control"] == "no-store"
+        shell = client.get("/")
+        assert shell.headers["cache-control"] == "no-store"
+        policy = shell.headers["content-security-policy"]
+        assert "connect-src 'self' blob:" in policy
+        assert "img-src 'self' data: blob:" in policy
         _, headers = _csrf(client)
         workspace_id = client.get("/api/v1/workspaces").json()[0]["workspace_id"]
         assert client.post(f"/api/v1/workspaces/{workspace_id}/sessions").status_code == 403

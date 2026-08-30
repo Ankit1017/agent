@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import cast
 
 from local_harness.application.agent import AgentService
+from local_harness.application.audio2face import AnimatedSpeechService
 from local_harness.application.context import ContextBuilder
 from local_harness.application.evaluation import EvaluationService
 from local_harness.application.evaluation_components import component_snapshots
@@ -41,6 +42,8 @@ from local_harness.domain.voice_agent import VoiceAgentExecutionPolicy
 from local_harness.guardrails.path_policy import WorkspacePathPolicy
 from local_harness.guardrails.redaction import SecretRedactor
 from local_harness.identifiers import new_session_id
+from local_harness.infrastructure.audio2face import NvidiaAudio2FaceAnimator
+from local_harness.infrastructure.audio2face_avatar import LocalFaceAvatarRepository
 from local_harness.infrastructure.code_intelligence import CodeIntelligenceTool
 from local_harness.infrastructure.code_search import CodeFinder
 from local_harness.infrastructure.coding_tools import (
@@ -259,6 +262,43 @@ def build_speech_service(workspace: Path, settings: Settings) -> SpeechService |
         redactor.sanitize,
         default_voice=settings.tts_default_voice,
         max_chars=settings.tts_max_chars,
+    )
+
+
+def build_animated_speech_service(
+    workspace: Path, settings: Settings, speech_service: SpeechService | None
+) -> AnimatedSpeechService | None:
+    """Compose the optional protected Piper-to-Audio2Face integration."""
+    if not settings.audio2face_enabled:
+        return None
+    if speech_service is None:
+        raise ConfigurationError("HARNESS_AUDIO2FACE_ENABLED requires HARNESS_TTS_ENABLED")
+    resolved_workspace = workspace.resolve(strict=True)
+    tool_root = resolved_workspace / ".harness" / "tools" / "audio2face"
+    model_root = resolved_workspace / ".harness" / "models" / "audio2face"
+    dependency_directories = [tool_root / "bin"]
+    if settings.audio2face_cuda_root:
+        dependency_directories.append(Path(settings.audio2face_cuda_root) / "bin")
+    if settings.audio2face_tensorrt_root:
+        dependency_directories.append(Path(settings.audio2face_tensorrt_root) / "lib")
+    animator = NvidiaAudio2FaceAnimator(
+        tool_root / "bin" / "audio2face-bridge.exe",
+        model_root / settings.audio2face_model / "model.json",
+        resolved_workspace / ".harness" / "runtime" / "audio2face",
+        model_name=settings.audio2face_model,
+        max_seconds=settings.audio2face_max_seconds,
+        timeout_seconds=settings.audio2face_timeout_seconds,
+        dependency_directories=tuple(dependency_directories),
+    )
+    avatar_repository = LocalFaceAvatarRepository(
+        model_root / "avatar",
+        settings.audio2face_avatar_max_bytes,
+    )
+    return AnimatedSpeechService(
+        speech_service,
+        animator,
+        avatar_repository,
+        max_seconds=settings.audio2face_max_seconds,
     )
 
 

@@ -8,6 +8,7 @@ from pathlib import Path
 import uvicorn
 
 from local_harness.bootstrap import (
+    build_animated_speech_service,
     build_speech_input_service,
     build_speech_service,
     build_voice_agent_profile_service,
@@ -33,6 +34,9 @@ def main(argv: list[str] | None = None) -> None:
     control = args.control_workspace.resolve(strict=True)
     coordinator = WebRuntimeCoordinator(control, args.catalog.resolve())
     speech_service = build_speech_service(control, coordinator.settings)
+    animated_speech_service = build_animated_speech_service(
+        control, coordinator.settings, speech_service
+    )
     speech_input_service = build_speech_input_service(control, coordinator.settings)
     voice_conversation_service = build_voice_conversation_service(control, coordinator.settings)
     voice_agent_profile_service = build_voice_agent_profile_service(
@@ -62,6 +66,7 @@ def main(argv: list[str] | None = None) -> None:
         coordinator,
         args.static_dir.resolve(),
         speech_service=speech_service,
+        animated_speech_service=animated_speech_service,
         speech_input_service=speech_input_service,
         voice_conversation_service=voice_conversation_service,
         voice_agent_profile_service=voice_agent_profile_service,

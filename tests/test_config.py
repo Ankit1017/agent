@@ -66,6 +66,11 @@ def test_settings_loads_dotenv_and_defaults(
     assert settings.stt_wake_phrase == "hey buddy"
     assert settings.stt_max_seconds == 15
     assert settings.stt_silence_ms == 800
+    assert settings.audio2face_enabled is False
+    assert settings.audio2face_model == "mark"
+    assert settings.audio2face_max_seconds == 60
+    assert settings.audio2face_timeout_seconds == 120
+    assert settings.audio2face_avatar_max_bytes == 52_428_800
 
 
 def test_settings_validates_speech_configuration(tmp_path: Path) -> None:
@@ -116,6 +121,39 @@ def test_settings_validates_local_speech_input_configuration(tmp_path: Path) -> 
         ("HARNESS_STT_WAKE_PHRASE=computer", "WAKE_PHRASE"),
         ("HARNESS_STT_MAX_SECONDS=16", "MAX_SECONDS"),
         ("HARNESS_STT_SILENCE_MS=200", "SILENCE_MS"),
+    ):
+        (tmp_path / ".env").write_text(f"OPENAI_API_KEY=real\n{line}\n", encoding="utf-8")
+        with pytest.raises(ConfigurationError, match=error):
+            Settings.load(tmp_path)
+
+
+def test_settings_validates_audio2face_configuration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Audio2Face exposes one fixed model and bounded execution limits."""
+    monkeypatch.delenv("CUDA_PATH", raising=False)
+    monkeypatch.delenv("TENSORRT_ROOT_DIR", raising=False)
+    (tmp_path / ".env").write_text(
+        "OPENAI_API_KEY=real\n"
+        "HARNESS_AUDIO2FACE_ENABLED=true\n"
+        "HARNESS_AUDIO2FACE_MODEL=mark\n"
+        "HARNESS_AUDIO2FACE_MAX_SECONDS=30\n"
+        "HARNESS_AUDIO2FACE_TIMEOUT_SECONDS=90\n"
+        "CUDA_PATH=C:\\NVIDIA\\CUDA\n"
+        "TENSORRT_ROOT_DIR=C:\\NVIDIA\\TensorRT\n",
+        encoding="utf-8",
+    )
+    settings = Settings.load(tmp_path)
+    assert settings.audio2face_enabled is True
+    assert settings.audio2face_max_seconds == 30
+    assert settings.audio2face_timeout_seconds == 90
+    assert settings.audio2face_cuda_root == "C:\\NVIDIA\\CUDA"
+    assert settings.audio2face_tensorrt_root == "C:\\NVIDIA\\TensorRT"
+
+    for line, error in (
+        ("HARNESS_AUDIO2FACE_MODEL=claire", "MODEL"),
+        ("HARNESS_AUDIO2FACE_MAX_SECONDS=61", "MAX_SECONDS"),
+        ("HARNESS_AUDIO2FACE_TIMEOUT_SECONDS=9", "TIMEOUT_SECONDS"),
     ):
         (tmp_path / ".env").write_text(f"OPENAI_API_KEY=real\n{line}\n", encoding="utf-8")
         with pytest.raises(ConfigurationError, match=error):

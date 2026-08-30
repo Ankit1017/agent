@@ -25,6 +25,8 @@ const {
     deleteVoiceConversation: vi.fn(),
     completeVoiceTurn: vi.fn(),
     streamSpeech: vi.fn(),
+    audio2faceStatus: vi.fn(),
+    generateAudio2Face: vi.fn(),
     speechInputStatus: vi.fn(),
   },
   bootstrapMock: vi.fn(),
@@ -145,6 +147,20 @@ describe("protected voice conversation page", () => {
     });
     apiMock.speechVoices.mockResolvedValue([voice]);
     apiMock.streamSpeech.mockResolvedValue(streamResponse());
+    apiMock.audio2faceStatus.mockResolvedValue({
+      enabled: false,
+      available: false,
+      gpu_available: false,
+      bridge_available: false,
+      model_available: false,
+      avatar_available: false,
+      avatar_name: null,
+      face_control_count: 0,
+      tongue_control_count: 0,
+      setup: "Run scripts/setup-audio2face.ps1.",
+      model: "mark",
+      max_seconds: 60,
+    });
     vi.stubGlobal("matchMedia", () => ({ matches: false }));
     vi.stubGlobal(
       "AudioContext",
@@ -163,6 +179,34 @@ describe("protected voice conversation page", () => {
   afterEach(cleanup);
 
   it("creates one turn, displays Markdown, and automatically speaks its answer", async () => {
+    apiMock.audio2faceStatus.mockResolvedValue({
+      enabled: true,
+      available: true,
+      gpu_available: true,
+      bridge_available: true,
+      model_available: true,
+      avatar_available: true,
+      avatar_name: "Test Face",
+      face_control_count: 52,
+      tongue_control_count: 0,
+      setup: "Ready",
+      model: "mark",
+      max_seconds: 60,
+    });
+    apiMock.generateAudio2Face.mockResolvedValue({
+      version: 1,
+      audio_base64: "AQA=",
+      audio_format: voice.audio_format,
+      voice_id: "voice",
+      redacted: false,
+      animation: {
+        fps: 60,
+        duration_seconds: 0.1,
+        model: "mark",
+        frames: [{ time_seconds: 0, mouth_open: 0.4, eye_x: 0, eye_y: 0 }],
+        rig: null,
+      },
+    });
     apiMock.voiceConversations.mockResolvedValue([]);
     apiMock.createVoiceConversation.mockResolvedValue(detail);
     apiMock.completeVoiceTurn.mockResolvedValue({
@@ -204,10 +248,11 @@ describe("protected voice conversation page", () => {
       ),
     );
     expect(apiMock.completeVoiceTurn).toHaveBeenCalledTimes(1);
-    expect(apiMock.streamSpeech).toHaveBeenCalledWith(
+    expect(apiMock.generateAudio2Face).toHaveBeenCalledWith(
       "Hello there",
       "voice",
       1,
+      "default",
       expect.any(AbortSignal),
     );
     expect(enqueueMock).toHaveBeenCalled();

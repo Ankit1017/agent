@@ -27,6 +27,21 @@ characters are sent. Markdown answers are capped at 1,500 characters, displayed 
 to plain speech, and automatically synthesized. Any historical assistant answer can be spoken again
 without another model call. Direct text-to-speech remains available as a second mode.
 
+When explicitly installed and enabled, Direct TTS and Voice Conversation offer **3D Audio2Face**.
+This bounded path synthesizes with the selected Piper voice, generates 52 named ARKit-style face
+weights from the same PCM, and drives an exact-ID setup-validated GLB against the Web Audio clock.
+The Character switch lists only the protected local catalog and is shared as a browser preference
+between both speech modes. Optional
+tongue weights are included only when both model and avatar support them. Replay uses the cached
+current utterance and historical **Speak** performs TTS/animation without another LLM call. Missing
+native, model, avatar, or WebGL support produces visible SVG fallback/setup guidance while normal
+Piper speech stays usable.
+
+The Three.js presentation frames the real textured avatar as an upper-body presenter, blends a
+relaxed idle pose into a restrained explanation pose during speech, and keeps facial weights tied
+to the Web Audio clock. Compact conversation mode uses a tighter head-and-shoulders crop. Missing
+textures are treated as an invalid presentation asset rather than replaced with synthetic material.
+
 When local speech input is installed and enabled, Voice Conversation adds a per-page microphone
 opt-in. Wake mode waits for “Hey Buddy”; tap mode listens immediately. Both end on silence or the
 15-second bound, transcribe English/Hindi locally, and auto-submit only a non-empty sanitized final

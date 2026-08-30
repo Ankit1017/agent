@@ -42,6 +42,7 @@ packages = ["src/local_harness"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+cache-dir = ".harness/cache/ruff"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "D"]
@@ -54,16 +55,19 @@ convention = "google"
 python_version = "3.12"
 strict = true
 files = ["src", "tests"]
+cache_dir = ".harness/cache/mypy"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "--strict-markers --strict-config"
+cache_dir = ".harness/cache/pytest"
 markers = ["live: requires a running local LiteLLM gateway"]
 
 [tool.coverage.run]
 branch = true
 source = ["local_harness"]
+data_file = ".harness/cache/coverage/.coverage"
 
 [tool.coverage.report]
 fail_under = 85

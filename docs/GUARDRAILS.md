@@ -22,6 +22,23 @@
   acceptance. Startup and requests never download models.
 - Speech mutations retain localhost trusted-host, SameSite cookie, exact Origin, CSRF, and body-size
   enforcement.
+- Audio2Face receives only already-redacted Piper PCM. The browser cannot choose executable, model,
+  dependency, input, output, or working-directory paths and cannot pass process flags.
+- Animated speech is limited to 60 seconds and one active request. Native process time and output are
+  bounded; errors never expose raw process output or local paths.
+- Request WAV/animation intermediates live only in a protected temporary directory and are deleted
+  at the request boundary. Startup and first use never download SDK dependencies or model files.
+- Each Audio2Face request owns a unique temporary directory and packed-weight file; no request can
+  read, replace, or clean another request's output. Rig names/counts, timestamps, finite unit-range
+  weights, encoding, and exact binary length are validated before browser serialization.
+- The 3D avatar endpoints serve only checksum-verified GLBs installed by rights-confirming setup
+  scripts. Selection uses an exact bounded catalog ID; browser paths are never accepted. External
+  GLB resources and scenes beyond the
+  documented 50 MB/complexity bounds are rejected before installation.
+- CSP permits `blob:` only for Three.js decoding of images already embedded in the protected GLB;
+  it does not permit external model, texture, script, API, or credential-bearing requests.
+- Presenter body poses operate only on discovered local skeleton bones. They never alter, replace,
+  infer, or suppress Audio2Face mouth, jaw, brow, or eye weights during speech.
 - One global synthesis slot prevents unbounded CPU/memory queues. Disconnect and Stop close the
   iterator, and audio exists only in bounded browser memory for the current utterance.
 - Voice-conversation turns bypass the agent, tools, project memory, workflow engine, evaluations,

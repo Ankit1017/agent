@@ -45,6 +45,22 @@ class SpeechUnavailableError(SpeechError):
     """Raised when the configured speech provider cannot synthesize audio."""
 
 
+class Audio2FaceError(HarnessError):
+    """Base error for local audio-driven facial animation."""
+
+
+class Audio2FaceBusyError(Audio2FaceError):
+    """Raised when the single local animation slot is already occupied."""
+
+
+class Audio2FaceValidationError(Audio2FaceError):
+    """Raised when an animation request violates a closed bound."""
+
+
+class Audio2FaceUnavailableError(Audio2FaceError):
+    """Raised when the configured native animation provider cannot run."""
+
+
 class SpeechInputError(HarnessError):
     """Raised when local microphone speech cannot be processed safely."""
 

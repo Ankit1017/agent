@@ -24,3 +24,6 @@ web/coverage/
 web/test-results/
 web/playwright-report/
 *.tsbuildinfo
+
+# External NVIDIA SDK checkout retained as an independently versioned dependency.
+/Audio2Face-3D-SDK/

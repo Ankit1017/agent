@@ -204,6 +204,64 @@ export interface SpeechVoice {
   loaded: boolean;
 }
 
+export interface Audio2FaceStatus {
+  enabled: boolean;
+  available: boolean;
+  gpu_available: boolean;
+  bridge_available: boolean;
+  model_available: boolean;
+  setup: string;
+  model: string;
+  max_seconds: number;
+  avatar_available: boolean;
+  avatar_name: string;
+  face_control_count: number;
+  tongue_control_count: number;
+  default_avatar_id?: string;
+  avatars?: FaceAvatarChoice[];
+}
+
+export interface FaceAvatarChoice {
+  avatar_id: string;
+  name: string;
+  face_control_count: number;
+  tongue_control_count: number;
+  sha256?: string;
+}
+
+export interface FaceRigAnimation {
+  encoding: "float32-le-frame-major";
+  fps: number;
+  frame_count: number;
+  face_controls: string[];
+  tongue_controls: string[];
+  weights_base64: string;
+}
+
+export interface FaceAnimationFrame {
+  time_seconds: number;
+  mouth_open: number;
+  eye_x: number;
+  eye_y: number;
+}
+
+export interface FaceAnimation {
+  fps: number;
+  duration_seconds: number;
+  frames: FaceAnimationFrame[];
+  model: string;
+  rig: FaceRigAnimation | null;
+}
+
+export interface AnimatedSpeechResponse {
+  version: 1;
+  audio_base64: string;
+  audio_format: SpeechFormat;
+  voice_id: string;
+  redacted: boolean;
+  animation: FaceAnimation;
+}
+
 export interface VoiceConversationSummary {
   conversation_id: string;
   title: string;

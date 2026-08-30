@@ -8,6 +8,8 @@ import type {
   Workspace,
   WorkflowDefinition,
   SpeechVoice,
+  Audio2FaceStatus,
+  AnimatedSpeechResponse,
   VoiceConversationDetail,
   VoiceConversationSummary,
   VoiceConversationTurn,
@@ -35,6 +37,7 @@ export async function bootstrap(): Promise<{
   speech_max_chars: number;
   voice_conversation_enabled: boolean;
   speech_input_enabled: boolean;
+  audio2face_enabled: boolean;
 }> {
   const value = await request<{
     csrf_token: string;
@@ -45,6 +48,7 @@ export async function bootstrap(): Promise<{
     speech_max_chars: number;
     voice_conversation_enabled: boolean;
     speech_input_enabled: boolean;
+    audio2face_enabled: boolean;
   }>("/api/v1/bootstrap");
   csrfToken = value.csrf_token;
   return value;
@@ -177,6 +181,25 @@ export const api = {
       body: JSON.stringify({ text }),
     }),
   speechVoices: () => request<SpeechVoice[]>("/api/v1/speech/voices"),
+  audio2faceStatus: () =>
+    request<Audio2FaceStatus>("/api/v1/speech/audio2face/status"),
+  generateAudio2Face: (
+    text: string,
+    voiceId: string,
+    rate: number,
+    avatarId: string,
+    signal: AbortSignal,
+  ) =>
+    request<AnimatedSpeechResponse>("/api/v1/speech/audio2face/generate", {
+      method: "POST",
+      body: JSON.stringify({
+        text,
+        voice_id: voiceId,
+        rate,
+        avatar_id: avatarId || undefined,
+      }),
+      signal,
+    }),
   streamSpeech: async (
     text: string,
     voiceId: string,

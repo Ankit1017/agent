@@ -12,6 +12,17 @@ small screen, module navigation and secondary information no longer obscure the 
 Keyboard users can skip to main content, see focus, close navigation/dialogs with Escape, and receive
 visible live status for loading, listening, generation, approval, playback, and errors.
 
+## Generate local animated speech
+
+After an operator explicitly installs the pinned NVIDIA prerequisites/model and a licensed
+ARKit-52 GLB, the user opens Direct TTS or Voice Conversation, chooses **3D Audio2Face**, and may
+select any separately validated local character. The
+Harness redacts text before speech generation, derives packed facial weights from the same audio,
+and synchronizes the fixed GLB locally. Historical answer **Speak** and Replay never make another
+LLM call. Stop, a new turn, or navigation aborts pending work, clears controls, and releases WebGL
+resources. Missing setup or runtime support visibly falls back to the 2D avatar. No submitted text,
+PCM, WAV, animation, credential, command, asset path, or local path is persisted.
+
 ## Switch the session model
 
 The user lists aliases, selects one while idle, and sees the effective model. Unknown aliases and

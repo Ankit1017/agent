@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
+import re
 import secrets
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
@@ -30,6 +32,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from local_harness.application.answer_quality import normalize_assistant_markdown
+from local_harness.application.audio2face import AnimatedSpeechService
 from local_harness.application.session_services import session_info
 from local_harness.application.speech import SpeechService
 from local_harness.application.speech_input import SpeechInputService, SpeechInputSession
@@ -41,6 +44,9 @@ from local_harness.application.voice_conversation import (
 )
 from local_harness.application.workflows import WorkflowCatalog
 from local_harness.domain.errors import (
+    Audio2FaceBusyError,
+    Audio2FaceUnavailableError,
+    Audio2FaceValidationError,
     HarnessError,
     ModelError,
     SessionError,
@@ -209,6 +215,9 @@ class SpeechSynthesisRequest(_ClosedModel):
     text: str = Field(min_length=1, max_length=5_000)
     voice_id: str = Field(min_length=1, max_length=128)
     rate: float = Field(default=1.0, ge=0.75, le=1.50)
+    avatar_id: str | None = Field(
+        default=None, min_length=1, max_length=32, pattern=r"^[a-z0-9][a-z0-9-]*$"
+    )
 
 
 class VoiceConversationCreate(_ClosedModel):
@@ -338,6 +347,7 @@ def create_app(
     static_directory: Path,
     *,
     speech_service: SpeechService | None = None,
+    animated_speech_service: AnimatedSpeechService | None = None,
     speech_input_service: SpeechInputService | None = None,
     voice_conversation_service: VoiceConversationService | None = None,
     voice_agent_profile_service: VoiceAgentProfileService | None = None,
@@ -376,8 +386,8 @@ def create_app(
                 return Response("Invalid Content-Length", status_code=400)
         response = await call_next(request)
         response.headers["Content-Security-Policy"] = (
-            f"default-src 'self'; connect-src 'self' {websocket_origins}; "
-            "img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+            f"default-src 'self'; connect-src 'self' blob: {websocket_origins}; "
+            "img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; "
             "script-src 'self'; worker-src 'self'; media-src 'self' blob:; object-src 'none'; "
             "base-uri 'none'; frame-ancestors 'none'"
         )
@@ -425,6 +435,7 @@ def create_app(
             "models": list(coordinator.settings.models),
             "max_concurrent_tasks": 2,
             "speech_enabled": speech_service is not None,
+            "audio2face_enabled": animated_speech_service is not None,
             "speech_input_enabled": speech_input_service is not None,
             "speech_max_chars": coordinator.settings.tts_max_chars,
             "voice_conversation_enabled": voice_conversation_service is not None,
@@ -436,6 +447,117 @@ def create_app(
         if speech_service is None:
             raise HTTPException(503, "Local speech is disabled. Run the voice setup first.")
         return [asdict(voice) for voice in speech_service.voices()]
+
+    @app.get("/api/v1/speech/audio2face/status", dependencies=browser_guarded)
+    async def audio2face_status() -> dict[str, object]:
+        if animated_speech_service is None:
+            return {
+                "enabled": False,
+                "available": False,
+                "gpu_available": False,
+                "bridge_available": False,
+                "model_available": False,
+                "setup": (
+                    "Run scripts/setup-audio2face.ps1, enable HARNESS_TTS_ENABLED and "
+                    "HARNESS_AUDIO2FACE_ENABLED, then restart the browser server."
+                ),
+                "model": "mark",
+                "max_seconds": 60,
+                "avatar_available": False,
+                "avatar_name": "",
+                "face_control_count": 0,
+                "tongue_control_count": 0,
+                "default_avatar_id": "",
+                "avatars": [],
+            }
+        return asdict(await asyncio.to_thread(animated_speech_service.status))
+
+    @app.get("/api/v1/speech/audio2face/avatar", dependencies=browser_guarded)
+    async def audio2face_avatar() -> Response:
+        if animated_speech_service is None:
+            raise HTTPException(503, "Local Audio2Face animation is disabled")
+        try:
+            asset = await asyncio.to_thread(animated_speech_service.avatar_asset)
+        except (Audio2FaceValidationError, Audio2FaceUnavailableError) as exc:
+            raise HTTPException(503, str(exc)) from exc
+        return Response(
+            content=asset.content,
+            media_type="model/gltf-binary",
+            headers={
+                "Cache-Control": "private, max-age=3600",
+                "ETag": f'"{asset.sha256}"',
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
+    @app.get(
+        "/api/v1/speech/audio2face/avatars/{avatar_id}",
+        dependencies=browser_guarded,
+    )
+    async def audio2face_avatar_by_id(avatar_id: str) -> Response:
+        if animated_speech_service is None:
+            raise HTTPException(503, "Local Audio2Face animation is disabled")
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,31}", avatar_id):
+            raise HTTPException(404, "Selected 3D avatar is unavailable")
+        try:
+            asset = await asyncio.to_thread(animated_speech_service.avatar_asset, avatar_id)
+        except (Audio2FaceValidationError, Audio2FaceUnavailableError) as exc:
+            raise HTTPException(404, str(exc)) from exc
+        return Response(
+            content=asset.content,
+            media_type="model/gltf-binary",
+            headers={
+                "Cache-Control": "private, max-age=3600",
+                "ETag": f'"{asset.sha256}"',
+                "X-Content-Type-Options": "nosniff",
+            },
+        )
+
+    @app.post("/api/v1/speech/audio2face/generate", dependencies=guarded)
+    async def generate_audio2face(request: SpeechSynthesisRequest) -> dict[str, object]:
+        if animated_speech_service is None:
+            raise HTTPException(503, "Local Audio2Face animation is disabled")
+        try:
+            value = await asyncio.to_thread(
+                animated_speech_service.generate,
+                request.text,
+                request.voice_id,
+                request.rate,
+                request.avatar_id,
+            )
+        except Audio2FaceBusyError as exc:
+            raise HTTPException(429, str(exc), headers={"Retry-After": "1"}) from exc
+        except (SpeechValidationError, Audio2FaceValidationError) as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except (SpeechBusyError, Audio2FaceUnavailableError, SpeechUnavailableError) as exc:
+            raise HTTPException(503, str(exc)) from exc
+        rig = value.animation.rig
+        animation = {
+            "fps": value.animation.fps,
+            "duration_seconds": value.animation.duration_seconds,
+            "frames": [asdict(frame) for frame in value.animation.frames],
+            "model": value.animation.model,
+            "rig": (
+                {
+                    "encoding": rig.encoding,
+                    "fps": rig.fps,
+                    "frame_count": rig.frame_count,
+                    "face_controls": list(rig.face_controls),
+                    "tongue_controls": list(rig.tongue_controls),
+                    "weights_base64": base64.b64encode(rig.weights).decode("ascii"),
+                }
+                if rig is not None
+                else None
+            ),
+        }
+        return {
+            "version": 1,
+            "audio_base64": base64.b64encode(value.audio).decode("ascii"),
+            "audio_format": asdict(value.audio_format),
+            "voice_id": value.voice_id,
+            "redacted": value.redacted,
+            "animation": animation,
+        }
 
     @app.get("/api/v1/speech/input/status", dependencies=browser_guarded)
     async def speech_input_status() -> dict[str, object]:

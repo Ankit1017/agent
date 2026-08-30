@@ -1,4 +1,6 @@
 $ErrorActionPreference = "Stop"
+$checkCacheRoot = ".harness\cache"
+$null = New-Item -ItemType Directory -Force -Path "$checkCacheRoot\coverage"
 $python = if (Test-Path ".venv\Scripts\python.exe") { ".venv\Scripts\python.exe" } else { "python" }
 & $python -m ruff format --check src tests
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

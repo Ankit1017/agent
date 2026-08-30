@@ -5,6 +5,13 @@ from __future__ import annotations
 from collections.abc import Iterator, Mapping, Sequence
 from typing import Protocol
 
+from local_harness.domain.audio2face import (
+    Audio2FaceStatus,
+    FaceAnimation,
+    FaceAvatarAsset,
+    FaceAvatarChoice,
+    FaceAvatarStatus,
+)
 from local_harness.domain.evaluation import (
     CandidateComparison,
     EvaluationContract,
@@ -55,6 +62,32 @@ class SpeechSynthesizer(Protocol):
 
     def synthesize(self, request: SpeechRequest) -> Iterator[bytes]:
         """Reserve the engine and return a pull-based raw PCM stream."""
+
+
+class FaceAnimator(Protocol):
+    """Generate bounded facial animation from one canonical PCM utterance."""
+
+    def animate(self, pcm_s16le_16khz: bytes) -> FaceAnimation:
+        """Return animation frames without retaining the submitted audio."""
+
+    def status(self) -> Audio2FaceStatus:
+        """Return a path-free setup and availability report."""
+
+
+class FaceAvatarRepository(Protocol):
+    """Read setup-validated local avatars without accepting runtime paths."""
+
+    def status(self, avatar_id: str | None = None) -> FaceAvatarStatus:
+        """Return safe avatar availability and control metadata."""
+
+    def asset(self, avatar_id: str | None = None) -> FaceAvatarAsset:
+        """Return one exact validated GLB asset."""
+
+    def catalog(self) -> tuple[FaceAvatarChoice, ...]:
+        """Return safe selectable avatar metadata."""
+
+    def default_id(self) -> str:
+        """Return the deterministic default avatar identifier."""
 
 
 class WakeWordStream(Protocol):

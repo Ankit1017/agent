@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApprovalDialog, SafeMarkdown } from "./App";
 import { api, bootstrap, clientId } from "./api";
+import { SpeakingAvatar, type AvatarMode } from "./Audio2FaceAvatar";
 import { LocalSpeechInputClient } from "./speech-input-client";
 import { PcmPlayer, type PcmMetadata, wavBlob } from "./speech-audio";
 import { AppHeader, EmptyState, StatusRegion } from "./ui";
@@ -12,6 +13,9 @@ import type {
   VoiceAgentProfile,
   Approval,
   StreamEvent,
+  Audio2FaceStatus,
+  FaceAnimation,
+  FaceRigAnimation,
 } from "./types";
 
 type VoiceState =
@@ -52,6 +56,13 @@ export default function VoiceConversationPanel({
   );
   const [redacted, setRedacted] = useState(false);
   const [mouthLevel, setMouthLevel] = useState(0);
+  const [audio2face, setAudio2face] = useState<Audio2FaceStatus | null>(null);
+  const [avatarMode, setAvatarMode] = useState<AvatarMode>("2d");
+  const [avatarId, setAvatarId] = useState("default");
+  const [rigAnimation, setRigAnimation] = useState<FaceRigAnimation | null>(
+    null,
+  );
+  const [animationStartedAt, setAnimationStartedAt] = useState(0);
   const [hasAudio, setHasAudio] = useState(false);
   const [speechInputAvailable, setSpeechInputAvailable] = useState(false);
   const [speechInputSetup, setSpeechInputSetup] = useState("");
@@ -63,6 +74,7 @@ export default function VoiceConversationPanel({
   const animation = useRef(0);
   const audio = useRef<Uint8Array[]>([]);
   const metadata = useRef<PcmMetadata | null>(null);
+  const faceAnimation = useRef<FaceAnimation | null>(null);
   const run = useRef(0);
   const speechInput = useRef<LocalSpeechInputClient | null>(null);
   const microphoneEnabledRef = useRef(false);
@@ -274,10 +286,21 @@ export default function VoiceConversationPanel({
     setConversations(await api.voiceConversations());
   }
 
-  function animateLevel(active: PcmPlayer) {
+  function animateLevel(active: PcmPlayer, face: FaceAnimation | null = null) {
     if (reducedMotion) return;
+    const started = performance.now() + 80;
     const update = () => {
-      setMouthLevel(active.level());
+      if (face) {
+        const elapsed = Math.max(0, (performance.now() - started) / 1000);
+        const index = Math.min(
+          face.frames.length - 1,
+          Math.floor(elapsed * face.fps),
+        );
+        const frame = face.frames[index];
+        setMouthLevel(frame?.mouth_open ?? 0);
+      } else {
+        setMouthLevel(active.level());
+      }
       animation.current = requestAnimationFrame(update);
     };
     animation.current = requestAnimationFrame(update);
@@ -315,6 +338,14 @@ export default function VoiceConversationPanel({
 
   async function speakText(value: string) {
     if (!voiceId || !value) return;
+    if (
+      avatarMode === "3d" &&
+      audio2face?.available &&
+      audio2face.avatar_available
+    ) {
+      await speakAnimatedText(value);
+      return;
+    }
     stopPlayback();
     const activeRun = run.current;
     const abort = new AbortController();
@@ -344,6 +375,8 @@ export default function VoiceConversationPanel({
         throw new Error("The server returned an unsupported audio stream");
       }
       metadata.current = { sampleRate, channels, sampleWidth };
+      faceAnimation.current = null;
+      setRigAnimation(null);
       const active = new PcmPlayer(context, sampleRate);
       player.current = active;
       await active.start();
@@ -377,6 +410,74 @@ export default function VoiceConversationPanel({
     }
   }
 
+  async function speakAnimatedText(value: string) {
+    stopPlayback();
+    const activeRun = run.current;
+    const abort = new AbortController();
+    controller.current = abort;
+    audio.current = [];
+    setHasAudio(false);
+    setState("speaking");
+    setNotice("Generating local 3D facial speech");
+    let context: AudioContext | null = null;
+    try {
+      const result = await api.generateAudio2Face(
+        value,
+        voiceId,
+        rate,
+        avatarId,
+        abort.signal,
+      );
+      const bytes = decodeBase64(result.audio_base64);
+      const details = {
+        sampleRate: result.audio_format.sample_rate,
+        channels: result.audio_format.channels,
+        sampleWidth: result.audio_format.sample_width,
+      };
+      if (
+        details.channels !== 1 ||
+        details.sampleWidth !== 2 ||
+        !bytes.length
+      ) {
+        throw new Error(
+          "The server returned unsupported animated speech audio",
+        );
+      }
+      metadata.current = details;
+      audio.current = [bytes];
+      faceAnimation.current = result.animation;
+      setRigAnimation(result.animation.rig);
+      setRedacted(result.redacted);
+      context = new AudioContext();
+      const active = new PcmPlayer(context, details.sampleRate);
+      player.current = active;
+      await active.start();
+      active.enqueue(bytes);
+      animateLevel(active, result.animation);
+      setAnimationStartedAt(performance.now() + 80);
+      setNotice(`Speaking with 3D Audio2Face ${result.animation.model}`);
+      await active.finish();
+      await context.close().catch(() => undefined);
+      context = null;
+      setHasAudio(true);
+      if (player.current === active) player.current = null;
+      if (!abort.signal.aborted && run.current === activeRun) {
+        setState("ready");
+        setNotice("Reply complete");
+        rearmMicrophone();
+      }
+    } catch (error) {
+      player.current?.stop();
+      player.current = null;
+      await context?.close().catch(() => undefined);
+      if (abort.signal.aborted) return;
+      fail(error, "3D speech failed; the text reply remains saved");
+      rearmMicrophone();
+    } finally {
+      if (controller.current === abort) controller.current = null;
+    }
+  }
+
   async function replay() {
     if (!metadata.current || !audio.current.length) return;
     stopPlayback();
@@ -388,6 +489,8 @@ export default function VoiceConversationPanel({
     player.current = active;
     await active.start();
     animateLevel(active);
+    setRigAnimation(faceAnimation.current?.rig ?? null);
+    setAnimationStartedAt(performance.now() + 80);
     for (const chunk of audio.current) active.enqueue(chunk);
     await active.finish();
     await context.close().catch(() => undefined);
@@ -526,6 +629,25 @@ export default function VoiceConversationPanel({
         setModels(config.models);
         setSelectedModel(config.model);
         setSpeechInputAvailable(config.speech_input_enabled);
+        const faceStatus = await api.audio2faceStatus();
+        if (!mounted) return;
+        setAudio2face(faceStatus);
+        if (faceStatus.available && faceStatus.avatar_available) {
+          setAvatarMode("3d");
+          const choices = faceStatus.avatars ?? [];
+          let preferred =
+            faceStatus.default_avatar_id || choices[0]?.avatar_id || "default";
+          try {
+            const saved = window.localStorage.getItem(
+              "harness.audio2face.avatar",
+            );
+            if (saved && choices.some((item) => item.avatar_id === saved))
+              preferred = saved;
+          } catch {
+            // Local preference storage is optional.
+          }
+          setAvatarId(preferred);
+        }
         const inputStatus = await api.speechInputStatus();
         if (!mounted) return;
         setSpeechInputAvailable(inputStatus.enabled);
@@ -811,6 +933,55 @@ export default function VoiceConversationPanel({
             </div>
           </div>
           <label>
+            Avatar
+            <select
+              aria-label="Conversation avatar mode"
+              value={avatarMode}
+              disabled={speaking}
+              onChange={(event) =>
+                setAvatarMode(event.target.value as AvatarMode)
+              }
+            >
+              <option
+                value="3d"
+                disabled={
+                  !audio2face?.available || !audio2face.avatar_available
+                }
+              >
+                3D Audio2Face
+              </option>
+              <option value="2d">2D audio-reactive</option>
+            </select>
+          </label>
+          {avatarMode === "3d" && (audio2face?.avatars?.length ?? 0) > 0 && (
+            <label>
+              Character
+              <select
+                aria-label="Conversation 3D avatar character"
+                value={avatarId}
+                disabled={speaking}
+                onChange={(event) => {
+                  const selected = event.target.value;
+                  setAvatarId(selected);
+                  try {
+                    window.localStorage.setItem(
+                      "harness.audio2face.avatar",
+                      selected,
+                    );
+                  } catch {
+                    // Local preference storage is optional.
+                  }
+                }}
+              >
+                {audio2face?.avatars?.map((avatar) => (
+                  <option key={avatar.avatar_id} value={avatar.avatar_id}>
+                    {avatar.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <label>
             Voice
             <select
               aria-label="Conversation voice"
@@ -868,32 +1039,25 @@ export default function VoiceConversationPanel({
         </aside>
         <section className="voice-chat-content">
           <div className="voice-chat-avatar-row">
-            <svg
-              className={`speech-avatar compact ${speaking ? "active" : ""}`}
-              viewBox="0 0 320 320"
-              role="img"
-              aria-label={notice}
-            >
-              <circle className="avatar-halo" cx="160" cy="160" r="145" />
-              <rect
-                className="avatar-head"
-                x="65"
-                y="55"
-                width="190"
-                height="210"
-                rx="72"
-              />
-              <circle className="avatar-eye" cx="125" cy="135" r="12" />
-              <circle className="avatar-eye" cx="195" cy="135" r="12" />
-              <ellipse
-                className="avatar-mouth"
-                cx="160"
-                cy="205"
-                rx="32"
-                ry={6 + mouthLevel * 22}
-              />
-            </svg>
-            <div>
+            <SpeakingAvatar
+              key={`${avatarMode}:${avatarId}`}
+              mode={avatarMode}
+              available={Boolean(
+                audio2face?.available && audio2face.avatar_available,
+              )}
+              active={speaking}
+              animation={rigAnimation}
+              startedAt={animationStartedAt}
+              mouthLevel={mouthLevel}
+              label={notice}
+              fallbackNotice={audio2face?.setup}
+              avatarId={avatarId}
+              avatarRevision={
+                audio2face?.avatars?.find((item) => item.avatar_id === avatarId)
+                  ?.sha256
+              }
+            />
+            <div className="voice-chat-summary">
               <p className={`speech-status ${state}`} aria-live="polite">
                 {notice}
               </p>
@@ -1012,4 +1176,9 @@ export default function VoiceConversationPanel({
       )}
     </div>
   );
+}
+
+function decodeBase64(value: string): Uint8Array {
+  const decoded = window.atob(value);
+  return Uint8Array.from(decoded, (character) => character.charCodeAt(0));
 }

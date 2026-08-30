@@ -10,6 +10,16 @@ domain, `SpeechService` depends on the `SpeechSynthesizer` application port, and
 `bootstrap.py` creates the in-process Piper adapter. The browser boundary streams bounded PCM; it
 does not expose model paths or make Piper available to domain/application code.
 
+Optional Audio2Face animation preserves that direction. `AnimatedSpeechService` consumes the
+existing redacted Piper output through `SpeechService` and a provider-neutral `FaceAnimator` port.
+Only `bootstrap.py` creates the fixed-process NVIDIA adapter and validated-avatar catalog
+repository. The application sees exact safe avatar IDs and provider-neutral assets, while legacy
+single-avatar installs remain the default.
+The native SDK, CUDA, TensorRT, GLB parsing, temporary WAV/binary handling, and process APIs remain
+in infrastructure/native code and never enter the domain or application layers. The browser maps
+the returned 52 named controls to the same-origin GLB with Three.js; the SVG path remains a
+backward-compatible fallback.
+
 Protected voice conversations use a separate `VoiceConversationService` and repository port. Each
 turn sends only its fixed system instruction, newest bounded redacted transcript, and current
 message through `ModelClient` with an empty tool list. This path never constructs `AgentService`, a
@@ -61,6 +71,12 @@ flowchart LR
     SpeechAPI --> SpeechService[SpeechService]
     SpeechService --> Piper[Piper adapter]
     Piper --> VoiceModels[Workspace-local voice models]
+    SpeechPage --> AnimatedSpeech[AnimatedSpeechService]
+    AnimatedSpeech --> SpeechService
+    AnimatedSpeech --> FaceAnimator[FaceAnimator port]
+    FaceAnimator --> A2FBridge[Fixed NVIDIA Audio2Face bridge]
+    AnimatedSpeech --> AvatarPort[Fixed avatar repository port]
+    AvatarPort --> ValidatedGLB[Setup-validated ARKit-52 GLB]
     SpeechPage --> VoiceConversation[VoiceConversationService]
     VoiceConversation --> ModelPort[ModelClient with no tools]
     VoiceConversation --> VoiceHistory[Redacted text-only JSON]

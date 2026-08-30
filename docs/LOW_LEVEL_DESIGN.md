@@ -27,6 +27,43 @@ controls. A one-item `asyncio.to_thread` pull bridge keeps Piper work off the ev
 the iterator on disconnect. Fixed response headers describe s16le mono PCM and redaction without
 echoing text. `/speech` consumes the `ReadableStream` with Web Audio; no server audio file exists.
 
+## Audio2Face animation boundary
+
+`domain/audio2face.py` owns provider-neutral status, avatar, legacy-frame, packed-rig, and
+animated-speech values.
+`application/audio2face.py` serializes generation, reuses `SpeechService` redaction and voice
+allowlisting, bounds audio to 60 seconds, and resamples PCM to the SDK's mono 16 kHz contract.
+`infrastructure/audio2face.py` alone creates a request-unique temporary directory and invokes the
+server-selected native bridge with fixed paths and arguments. The host blendshape executor returns
+exactly 52 named skin controls and any installed tongue controls at 60 fps. The bridge writes
+frame-major IEEE-754 little-endian weights only beside that request's metadata. The adapter validates
+control names, counts, timestamps, duration, finite `[0,1]` values, exact binary size, and total
+output bounds before reading it; the complete request directory is removed on success, error, or
+timeout.
+
+`infrastructure/audio2face_avatar.py` parses only setup-installed binary GLBs, rejects URI
+buffers/images and unsupported external-loading extensions, requires all canonical 52 controls, and
+enforces the documented file/mesh/vertex/primitive/morph/material/texture/node/depth limits. Setup
+writes an atomic checksum manifest with the rights acknowledgement. Application code intersects
+optional model tongue controls with the exact selected avatar without weakening the mandatory face
+rig. The legacy `avatar` directory remains the deterministic default; additional exact-ID entries
+under `avatars/<id>` form a path-free catalog. Unknown identifiers fail closed.
+
+`GET /api/v1/speech/audio2face/status` is cookie protected and exposes safe avatar counts/setup
+guidance and a safe character catalog, not paths. Cookie-protected avatar endpoints return only the
+default or one exact catalogued verified GLB.
+`POST /api/v1/speech/audio2face/generate` also requires exact Origin and CSRF, runs production work
+off the event loop, and returns bounded base64 PCM, legacy frames, and packed rig metadata. The
+shared React component loads the same-origin GLB, maps named morphs across meshes, interpolates at
+the Web Audio clock, and uses resize-aware orthographic presenter framing with the eyes at the
+documented vertical guide when eye meshes are discoverable. A 300 ms alias-based pose rig blends
+between idle and restrained explain poses while leaving Audio2Face morphs authoritative. ACES tone
+mapping, real embedded textures, shadows, warm/cool/rim lights, and a dark studio background remain
+presentation-only. Missing assigned textures trigger SVG fallback. CSP permits same-document
+`blob:` image decoding but does not permit external GLB resources. Renderer, mixer, skeleton,
+geometry, material, texture, and WebGL resources are released on Stop/navigation/unmount. Only the
+current utterance remains in browser memory.
+
 ## Model-only voice conversations
 
 `VoiceConversationService` accepts a mapping of exact configured model aliases and a

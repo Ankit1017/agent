@@ -11,6 +11,8 @@ import SpeechApp from "./SpeechApp";
 const bootstrapMock = vi.fn();
 const voicesMock = vi.fn();
 const streamMock = vi.fn();
+const audio2faceStatusMock = vi.fn();
+const generateAudio2faceMock = vi.fn();
 const enqueueMock = vi.fn();
 const stopMock = vi.fn();
 
@@ -19,6 +21,8 @@ vi.mock("./api", () => ({
   api: {
     speechVoices: () => voicesMock(),
     streamSpeech: (...args: unknown[]) => streamMock(...args),
+    audio2faceStatus: () => audio2faceStatusMock(),
+    generateAudio2Face: (...args: unknown[]) => generateAudio2faceMock(...args),
   },
 }));
 
@@ -74,9 +78,12 @@ function streamResponse(redacted = false): Response {
 
 describe("independent speech page", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     bootstrapMock.mockReset();
     voicesMock.mockReset();
     streamMock.mockReset();
+    audio2faceStatusMock.mockReset();
+    generateAudio2faceMock.mockReset();
     enqueueMock.mockReset();
     stopMock.mockReset();
     vi.stubGlobal("matchMedia", () => ({ matches: false }));
@@ -93,6 +100,16 @@ describe("independent speech page", () => {
       vi.fn(() => 1),
     );
     vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    audio2faceStatusMock.mockResolvedValue({
+      enabled: false,
+      available: false,
+      gpu_available: false,
+      bridge_available: false,
+      model_available: false,
+      setup: "Run scripts/setup-audio2face.ps1.",
+      model: "mark",
+      max_seconds: 60,
+    });
   });
   afterEach(cleanup);
 
@@ -104,10 +121,82 @@ describe("independent speech page", () => {
     render(<SpeechApp onVoice={vi.fn()} />);
     expect(await screen.findByText(/setup-voices.ps1/)).toBeVisible();
     expect(screen.getByRole("button", { name: "Speak" })).toBeDisabled();
+    expect(
+      screen.getByRole("option", { name: "3D Audio2Face" }),
+    ).toBeDisabled();
     expect(screen.getByRole("link", { name: "Chat" })).toHaveAttribute(
       "href",
       "/",
     );
+  });
+
+  it("generates and plays a synchronized Audio2Face response", async () => {
+    bootstrapMock.mockResolvedValue({
+      speech_enabled: true,
+      audio2face_enabled: true,
+      speech_max_chars: 5000,
+    });
+    voicesMock.mockResolvedValue([voice]);
+    audio2faceStatusMock.mockResolvedValue({
+      enabled: true,
+      available: true,
+      gpu_available: true,
+      bridge_available: true,
+      model_available: true,
+      avatar_available: true,
+      avatar_name: "Test Avatar",
+      face_control_count: 52,
+      tongue_control_count: 0,
+      default_avatar_id: "default",
+      avatars: [
+        {
+          avatar_id: "default",
+          name: "Test Avatar",
+          face_control_count: 52,
+          tongue_control_count: 0,
+        },
+        {
+          avatar_id: "amber",
+          name: "Amber Presenter",
+          face_control_count: 52,
+          tongue_control_count: 0,
+        },
+      ],
+      setup: "Ready",
+      model: "mark",
+      max_seconds: 60,
+    });
+    generateAudio2faceMock.mockResolvedValue({
+      version: 1,
+      audio_base64: "AQACAA==",
+      audio_format: voice.audio_format,
+      voice_id: "voice",
+      redacted: false,
+      animation: {
+        fps: 60,
+        duration_seconds: 0.1,
+        model: "mark",
+        frames: [{ time_seconds: 0, mouth_open: 0.75, eye_x: 0, eye_y: 0 }],
+      },
+    });
+    render(<SpeechApp onVoice={vi.fn()} />);
+    await screen.findByText("Ready to speak locally");
+    fireEvent.change(screen.getByLabelText("3D avatar character"), {
+      target: { value: "amber" },
+    });
+    fireEvent.change(screen.getByLabelText("Speech text"), {
+      target: { value: "hello" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Speak" }));
+    await screen.findByText("Audio2Face playback complete");
+    expect(generateAudio2faceMock).toHaveBeenCalledWith(
+      "hello",
+      "voice",
+      1,
+      "amber",
+      expect.any(AbortSignal),
+    );
+    expect(enqueueMock).toHaveBeenCalledWith(new Uint8Array([1, 0, 2, 0]));
   });
 
   it("streams, exposes redaction, enables replay/download, and reacts to audio", async () => {

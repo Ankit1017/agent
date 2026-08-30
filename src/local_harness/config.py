@@ -68,6 +68,13 @@ class Settings:
         "hi_IN-rohan-medium",
     )
     tts_max_chars: int = 5_000
+    audio2face_enabled: bool = False
+    audio2face_model: str = "mark"
+    audio2face_max_seconds: int = 60
+    audio2face_timeout_seconds: int = 120
+    audio2face_avatar_max_bytes: int = 52_428_800
+    audio2face_cuda_root: str = ""
+    audio2face_tensorrt_root: str = ""
     stt_enabled: bool = False
     stt_model: str = "small"
     stt_languages: tuple[str, ...] = ("en", "hi")
@@ -156,6 +163,9 @@ class Settings:
             raise ConfigurationError(
                 "HARNESS_TTS_DEFAULT_VOICE must be included in HARNESS_TTS_VOICES"
             )
+        audio2face_model = setting("HARNESS_AUDIO2FACE_MODEL", "mark").casefold()
+        if audio2face_model != "mark":
+            raise ConfigurationError("HARNESS_AUDIO2FACE_MODEL must be mark")
         stt_model = setting("HARNESS_STT_MODEL", "small").casefold()
         if stt_model != "small":
             raise ConfigurationError("HARNESS_STT_MODEL must be small")
@@ -357,6 +367,31 @@ class Settings:
                 1,
                 5_000,
             ),
+            audio2face_enabled=_boolean(
+                setting("HARNESS_AUDIO2FACE_ENABLED", "false"),
+                "HARNESS_AUDIO2FACE_ENABLED",
+            ),
+            audio2face_model=audio2face_model,
+            audio2face_max_seconds=_bounded_int(
+                setting("HARNESS_AUDIO2FACE_MAX_SECONDS", "60"),
+                "HARNESS_AUDIO2FACE_MAX_SECONDS",
+                1,
+                60,
+            ),
+            audio2face_timeout_seconds=_bounded_int(
+                setting("HARNESS_AUDIO2FACE_TIMEOUT_SECONDS", "120"),
+                "HARNESS_AUDIO2FACE_TIMEOUT_SECONDS",
+                10,
+                300,
+            ),
+            audio2face_avatar_max_bytes=_bounded_int(
+                setting("HARNESS_AUDIO2FACE_AVATAR_MAX_BYTES", "52428800"),
+                "HARNESS_AUDIO2FACE_AVATAR_MAX_BYTES",
+                1_048_576,
+                52_428_800,
+            ),
+            audio2face_cuda_root=setting("CUDA_PATH"),
+            audio2face_tensorrt_root=setting("TENSORRT_ROOT_DIR"),
             stt_enabled=_boolean(setting("HARNESS_STT_ENABLED", "false"), "HARNESS_STT_ENABLED"),
             stt_model=stt_model,
             stt_languages=stt_languages,
