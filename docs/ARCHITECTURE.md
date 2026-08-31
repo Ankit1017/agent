@@ -1,5 +1,8 @@
 # Architecture
 
+For a file-by-file repository orientation and end-to-end reading path, see
+[Project Structure](PROJECT_STRUCTURE.md).
+
 Model selection is presentation-neutral configuration. The composition root validates a session's
 saved alias against `HARNESS_MODELS` and creates the OpenAI-compatible adapter for that alias.
 Interfaces change the persisted model only while idle; domain and application code remain
