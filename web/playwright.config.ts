@@ -1,10 +1,16 @@
 import { defineConfig } from "@playwright/test";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
+
+const localPython = resolve("../.venv/Scripts/python.exe");
+const python = existsSync(localPython) ? `"${localPython}"` : "python";
 
 export default defineConfig({
   testDir: "./e2e",
   webServer: {
     command:
-      "..\\.venv\\Scripts\\python.exe -m local_harness.interfaces.web.server --control-workspace .. --catalog ..\\.harness\\e2e-workspaces.json --static-dir dist --port 3100",
+      `${python} -m local_harness.interfaces.web.server --control-workspace .. ` +
+      "--catalog ../.harness/e2e-workspaces.json --static-dir dist --port 3100",
     url: "http://127.0.0.1:3100/health",
     reuseExistingServer: false,
     timeout: 60_000,

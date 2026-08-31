@@ -466,18 +466,24 @@ nav {
   grid-area: main;
   display: grid;
   min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 58px minmax(0, 1fr) auto;
   background: radial-gradient(circle at 50% 0, #101a23 0, #090d12 50%);
 }
 .conversation-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  min-width: 0;
   padding: 0 20px;
   border-bottom: 1px solid #202a36;
 }
 .conversation-head div:first-child {
   display: flex;
+  min-width: 0;
   gap: 10px;
   align-items: baseline;
 }
@@ -486,17 +492,23 @@ nav {
 }
 .actions {
   display: flex;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
   gap: 8px;
   align-items: center;
 }
 .model-select {
   display: flex;
+  min-width: 0;
   align-items: center;
   gap: 6px;
   color: var(--text-secondary);
   font-size: 0.875rem;
 }
 .model-select select {
+  min-width: 0;
   max-width: 180px;
 }
 .actions > button {
@@ -711,13 +723,17 @@ nav {
 
 .workflow-select {
   display: flex;
+  flex-wrap: wrap;
+  min-width: 0;
   align-items: center;
   gap: 0.65rem;
   color: var(--text-secondary);
   font-size: 0.875rem;
 }
 .workflow-select select {
+  flex: 1 1 190px;
   min-width: 190px;
+  max-width: 100%;
   padding: 0.45rem 0.65rem;
   color: var(--text);
   background: var(--surface-raised);
@@ -897,6 +913,19 @@ kbd {
   }
   .conversation-head {
     padding: 0 12px;
+  }
+  .conversation-head .actions {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+  .model-select {
+    flex: 1 1 180px;
+  }
+  .model-select select {
+    flex: 1 1 auto;
+  }
+  .workflow-select select {
+    min-width: 0;
   }
   .transcript {
     padding: 16px 12px;
