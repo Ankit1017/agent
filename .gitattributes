@@ -1,0 +1,18 @@
+# Keep repository text deterministic across Windows development and CI.
+* text=auto eol=lf
+
+# Native Windows command launchers retain conventional CRLF endings.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Local media and 3D assets must never pass through text normalization.
+*.blend binary
+*.fbx binary
+*.glb binary
+*.gltf binary
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.rar binary
+*.wav binary
+*.zip binary
